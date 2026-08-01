@@ -47,7 +47,7 @@ export default function App() {
   const [filterSeverity, setFilterSeverity] = useState('ALL');
   const [searchQuery, setSearchQuery] = useState('');
 
-  const BACKEND_URL = 'http://localhost:8000/api/audit';
+  const BACKEND_URL = 'https://compliance-and-audit.onrender.com/api/audit';;
 
   if (!isAuthenticated) {
     return <Login onLogin={() => setIsAuthenticated(true)} />;
