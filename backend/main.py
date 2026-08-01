@@ -1,16 +1,15 @@
 import os
-import io
 import json
+import io
+import pandas as pd
+from pypdf import PdfReader
 from fastapi import FastAPI, UploadFile, File, HTTPException, status
 from fastapi.middleware.cors import CORSMiddleware
-from pypdf import PdfReader
-import pandas as pd
 from google import genai
-from google.genai import types
 
-app = FastAPI(title="Compliance & Audit AI Backend")
+app = FastAPI(title="Compliance Auditor AI API")
 
-# Enable CORS for React Frontend
+# Enable CORS for React Frontend (runs on localhost:5173)
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
@@ -19,33 +18,37 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-def extract_policy_text(file_bytes: bytes, filename: str) -> str:
-    try:
-        if filename.lower().endswith('.pdf'):
-            pdf_reader = PdfReader(io.BytesIO(file_bytes))
-            text = ""
-            for page in pdf_reader.pages:
-                extracted = page.extract_text()
-                if extracted:
-                    text += extracted + "\n"
-            return text.strip()
-        else:
-            return file_bytes.decode("utf-8", errors="ignore").strip()
-    except Exception as e:
-        raise HTTPException(status_code=400, detail=f"Error parsing policy file: {str(e)}")
+def extract_text_from_file(file: UploadFile) -> str:
+    content = file.file.read()
+    filename = file.filename.lower()
 
-def extract_log_text(file_bytes: bytes, filename: str) -> str:
-    try:
-        if filename.lower().endswith('.csv'):
-            df = pd.read_csv(io.BytesIO(file_bytes))
-            return df.to_csv(index=False)
-        else:
-            return file_bytes.decode("utf-8", errors="ignore").strip()
-    except Exception as e:
-        raise HTTPException(status_code=400, detail=f"Error parsing log file: {str(e)}")
+    if filename.endswith(".pdf"):
+        pdf_reader = PdfReader(io.BytesIO(content))
+        text = ""
+        for page in pdf_reader.pages[:10]:  # Limit to first 10 pages if large
+            text += page.extract_text() or ""
+        return text.strip()
+        
+    elif filename.endswith(".csv"):
+        df = pd.read_csv(io.BytesIO(content))
+        # Truncate CSV to top 100 rows to stay well within free tier token limits
+        if len(df) > 100:
+            df = df.head(100)
+        return df.to_string()
+        
+    elif filename.endswith((".txt", ".json", ".log")):
+        text = content.decode("utf-8", errors="ignore").strip()
+        # Truncate long text logs to ~15,000 characters
+        return text[:15000]
+        
+    else:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Unsupported file format: {file.filename}"
+        )
 
 @app.get("/")
-def health_check():
+def read_root():
     return {"status": "online", "message": "Compliance Auditor AI API is active!"}
 
 @app.post("/api/audit")
@@ -53,73 +56,56 @@ async def execute_audit(
     policy_file: UploadFile = File(...),
     log_file: UploadFile = File(...)
 ):
-    api_key = os.getenv("GEMINI_API_KEY")
+    api_key = os.environ.get("GEMINI_API_KEY")
     if not api_key:
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="GEMINI_API_KEY environment variable is not set."
+            detail="GEMINI_API_KEY environment variable is missing."
         )
-
-    policy_bytes = await policy_file.read()
-    log_bytes = await log_file.read()
-
-    policy_content = extract_policy_text(policy_bytes, policy_file.filename)
-    log_content = extract_log_text(log_bytes, log_file.filename)
-
-    system_instruction = """
-    You are the core intelligence engine for the Enterprise AI Compliance & Risk Auditor. Your objective is to ingest company policy rules and system execution logs, perform strict cross-examination, and output structured, actionable compliance violation reports.
-
-    EVALUATION RULES:
-    1. Strict Fact-Based Cross-Examination: Only flag a violation if the log entry explicitly breaches a documented policy parameter. Do not hallucinate unstated policies.
-    2. Severity Tiering:
-       - HIGH: Security breaches, unauthorized data exports, privilege escalation, or financial threshold violations.
-       - MEDIUM: Operational hours violations, missing manager sign-offs, or unfulfilled mandatory L&D retakes.
-       - LOW: Minor procedural deviations, late log syncing, or non-critical documentation gaps.
-    3. Actionable Guidance: Provide immediate, enforceable remediation steps for every flagged item.
-
-    OUTPUT FORMAT:
-    You MUST respond strictly in valid JSON matching this schema:
-    {
-      "total_logs_analyzed": number,
-      "total_violations": number,
-      "high_severity_count": number,
-      "medium_severity_count": number,
-      "low_severity_count": number,
-      "violations": [
-        {
-          "id": number,
-          "rule_violated": "Policy rule title",
-          "log_entry": "Raw log line or record parameters",
-          "severity": "HIGH" | "MEDIUM" | "LOW",
-          "explanation": "Clear reason for breach",
-          "recommendation": "Enforceable remediation action"
-        }
-      ]
-    }
-    """
-
-    user_prompt = f"""
-    POLICY DOCUMENT:
-    {policy_content}
-
-    SYSTEM LOGS:
-    {log_content}
-    """
 
     try:
+        policy_text = extract_text_from_file(policy_file)
+        log_text = extract_text_from_file(log_file)
+        
         client = genai.Client(api_key=api_key)
+        
+        prompt = f"""
+        You are an expert IT Compliance and Security Auditor. 
+        Compare the following Company Policy Document with the System Logs File.
+        Identify any violations, policy breaches, or anomalies present in the logs.
+
+        COMPANY POLICY:
+        {policy_text}
+
+        SYSTEM LOGS:
+        {log_text}
+
+        Return your response ONLY as valid JSON (no markdown block formatting, no extra text) with this structure:
+        {{
+            "violations": [
+                {{
+                    "id": 1,
+                    "rule_violated": "Name/Summary of policy rule",
+                    "log_entry": "Exact log line or evidence snippet",
+                    "severity": "HIGH" | "MEDIUM" | "LOW",
+                    "explanation": "Detailed explanation of why this violates policy",
+                    "recommendation": "Actionable steps to resolve or mitigate"
+                }}
+            ]
+        }}
+        """
+
         response = client.models.generate_content(
-            model="gemini-2.5-flash",
-            contents=user_prompt,
-            config=types.GenerateContentConfig(
-                system_instruction=system_instruction,
-                response_mime_type="application/json",
-                temperature=0.1
-            )
+            model='gemini-2.5-flash',
+            contents=prompt,
         )
-        return json.loads(response.text)
+        
+        cleaned_text = response.text.replace("```json", "").replace("```", "").strip()
+        audit_result = json.loads(cleaned_text)
+        return audit_result
+
     except Exception as e:
         raise HTTPException(
-            status_code=Status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Gemini AI processing error: {str(e)}"
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Audit execution failed: {str(e)}"
         )
