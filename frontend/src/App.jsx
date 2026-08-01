@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Upload, AlertTriangle, ShieldAlert, FileText, Loader2, Sparkles } from 'lucide-react';
+import { Upload, AlertTriangle, ShieldAlert, FileText, Loader2, Sparkles, CheckCircle2 } from 'lucide-react';
 import axios from 'axios';
 
 const MOCK_RESULTS = [
@@ -33,14 +33,14 @@ export default function App() {
   const [policyFile, setPolicyFile] = useState(null);
   const [logFile, setLogFile] = useState(null);
   const [loading, setLoading] = useState(false);
-  const [auditData, setAuditData] = useState([]);
+  const [auditData, setAuditData] = useState(null);
   const [error, setError] = useState('');
 
   const BACKEND_URL = 'http://localhost:8000/api/audit';
 
   const handleAudit = async () => {
     if (!policyFile || !logFile) {
-      setError('Please select both a Policy PDF and a Log file.');
+      setError('Please select both a Policy document and a Log file.');
       return;
     }
     setError('');
@@ -52,9 +52,12 @@ export default function App() {
 
     try {
       const response = await axios.post(BACKEND_URL, formData);
-      setAuditData(response.data);
+      // Extracts violations array from FastAPI response dictionary
+      const violations = response.data.violations || response.data;
+      setAuditData(Array.isArray(violations) ? violations : []);
     } catch (err) {
-      setError('Backend connection failed. Displaying mock preview data.');
+      console.error("Audit request failed:", err);
+      setError(err.response?.data?.detail || 'Backend connection failed. Displaying mock preview data.');
       setAuditData(MOCK_RESULTS);
     } finally {
       setLoading(false);
@@ -66,7 +69,7 @@ export default function App() {
     setAuditData(MOCK_RESULTS);
   };
 
-  const highSeverityCount = auditData.filter(item => item.severity === 'HIGH').length;
+  const highSeverityCount = auditData ? auditData.filter(item => item.severity === 'HIGH').length : 0;
 
   return (
     <div className="min-h-screen bg-slate-900 text-slate-100 p-6 md:p-12 font-sans">
@@ -133,7 +136,7 @@ export default function App() {
       )}
 
       {/* Results Dashboard */}
-      {auditData.length > 0 && (
+      {auditData && auditData.length > 0 && (
         <div className="mt-12 space-y-8">
           <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
             <div className="bg-slate-800/90 p-5 rounded-2xl border border-slate-700">
@@ -155,8 +158,8 @@ export default function App() {
               <AlertTriangle className="text-amber-400" /> Policy Violation Report
             </h2>
             <div className="space-y-4">
-              {auditData.map((item) => (
-                <div key={item.id} className="bg-slate-800/90 p-6 rounded-2xl border border-slate-700/80 shadow-lg flex flex-col md:flex-row justify-between gap-6">
+              {auditData.map((item, index) => (
+                <div key={item.id || index} className="bg-slate-800/90 p-6 rounded-2xl border border-slate-700/80 shadow-lg flex flex-col md:flex-row justify-between gap-6">
                   <div className="space-y-3 flex-1">
                     <div className="flex items-center gap-3">
                       <span className={`px-3 py-1 rounded-full text-xs font-bold tracking-wide border ${
@@ -184,6 +187,19 @@ export default function App() {
               ))}
             </div>
           </div>
+        </div>
+      )}
+
+      {/* No Violations Clean State */}
+      {auditData && auditData.length === 0 && (
+        <div className="mt-8 p-6 bg-slate-800/80 rounded-2xl border border-emerald-500/40 text-center">
+          <CheckCircle2 className="w-10 h-10 text-emerald-400 mx-auto mb-2" />
+          <p className="text-emerald-400 font-bold text-lg">
+            No Policy Violations Detected!
+          </p>
+          <p className="text-slate-400 text-sm mt-1">
+            All system logs strictly comply with corporate policies.
+          </p>
         </div>
       )}
     </div>
