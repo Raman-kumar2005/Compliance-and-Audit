@@ -1,10 +1,12 @@
 import React, { useState } from 'react';
+import Login from './Login';
 import { 
   Upload, AlertTriangle, ShieldAlert, FileText, Loader2, 
   Sparkles, CheckCircle2, Download, Search, Filter 
 } from 'lucide-react';
 import axios from 'axios';
 import html2pdf from 'html2pdf.js';
+import { PieChart, Pie, Cell, Tooltip, ResponsiveContainer, Legend } from 'recharts';
 
 const MOCK_RESULTS = [
   {
@@ -34,6 +36,7 @@ const MOCK_RESULTS = [
 ];
 
 export default function App() {
+  const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [policyFile, setPolicyFile] = useState(null);
   const [logFile, setLogFile] = useState(null);
   const [loading, setLoading] = useState(false);
@@ -45,6 +48,10 @@ export default function App() {
   const [searchQuery, setSearchQuery] = useState('');
 
   const BACKEND_URL = 'http://localhost:8000/api/audit';
+
+  if (!isAuthenticated) {
+    return <Login onLogin={() => setIsAuthenticated(true)} />;
+  }
 
   const handleAudit = async () => {
     if (!policyFile || !logFile) {
@@ -99,6 +106,21 @@ export default function App() {
   }) : [];
 
   const highSeverityCount = auditData ? auditData.filter(item => item.severity === 'HIGH').length : 0;
+  
+  // 1. Group the violations by rule_violated and count them
+  const violationCounts = auditData?.reduce((acc, curr) => {
+    const rule = curr.rule_violated;
+    acc[rule] = (acc[rule] || 0) + 1;
+    return acc;
+  }, {});
+
+  // 2. Format the data for Recharts
+  const chartColors = ['#6366f1', '#f43f5e', '#f59e0b', '#10b981', '#06b6d4', '#8b5cf6'];
+  const pieChartData = Object.keys(violationCounts || {}).map((key, index) => ({
+    name: key,
+    value: violationCounts[key],
+    color: chartColors[index % chartColors.length]
+  }));
 
   return (
     <div className="min-h-screen bg-slate-900 text-slate-100 p-6 md:p-12 font-sans">
@@ -110,12 +132,22 @@ export default function App() {
           </h1>
           <p className="text-slate-400 mt-1">Instant policy violation detection & automated log risk analysis.</p>
         </div>
-        <button 
-          onClick={loadDemoData}
-          className="px-4 py-2 bg-slate-800 hover:bg-slate-700 text-indigo-300 rounded-lg text-sm font-semibold border border-indigo-500/30 flex items-center gap-2 transition cursor-pointer"
-        >
-          <Sparkles className="w-4 h-4 text-indigo-400" /> Load Demo Preview Data
-        </button>
+        
+        <div className="flex items-center gap-3">
+          <button 
+            onClick={loadDemoData}
+            className="px-4 py-2 bg-slate-800 hover:bg-slate-700 text-indigo-300 rounded-lg text-sm font-semibold border border-indigo-500/30 flex items-center gap-2 transition cursor-pointer"
+          >
+            <Sparkles className="w-4 h-4 text-indigo-400" /> Load Demo Preview Data
+          </button>
+          
+          <button 
+            onClick={() => setIsAuthenticated(false)}
+            className="px-4 py-2 bg-slate-800 hover:bg-red-900/40 text-red-400 rounded-lg text-sm font-semibold border border-red-500/30 transition cursor-pointer"
+          >
+            Logout
+          </button>
+        </div>
       </header>
 
       {/* Upload Zones */}
@@ -185,6 +217,38 @@ export default function App() {
               </p>
             </div>
           </div>
+
+          {/* --- PIE CHART SECTION --- */}
+          {pieChartData.length > 0 && (
+            <div className="bg-slate-800/90 p-6 rounded-2xl border border-slate-700 shadow-md">
+              <h3 className="text-lg font-bold text-slate-100 mb-4">Violation Breakdown</h3>
+              <div className="h-72 w-full">
+                <ResponsiveContainer width="100%" height="100%">
+                  <PieChart>
+                    <Pie
+                      data={pieChartData}
+                      cx="50%"
+                      cy="50%"
+                      innerRadius={60}
+                      outerRadius={90}
+                      paddingAngle={5}
+                      dataKey="value"
+                      stroke="none"
+                    >
+                      {pieChartData.map((entry, index) => (
+                        <Cell key={`cell-${index}`} fill={entry.color} />
+                      ))}
+                    </Pie>
+                    <Tooltip 
+                      contentStyle={{ backgroundColor: '#0f172a', borderColor: '#334155', borderRadius: '8px', color: '#f8fafc' }}
+                      itemStyle={{ color: '#cbd5e1' }}
+                    />
+                    <Legend wrapperStyle={{ fontSize: '12px', color: '#94a3b8' }} />
+                  </PieChart>
+                </ResponsiveContainer>
+              </div>
+            </div>
+          )}
 
           {/* Search, Filter & PDF Export Bar */}
           <div className="flex flex-col md:flex-row justify-between items-stretch md:items-center gap-4 bg-slate-800/50 p-4 rounded-xl border border-slate-700/50">
