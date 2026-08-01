@@ -1,6 +1,5 @@
 import React, { useState } from 'react';
-import { Upload, AlertTriangle, ShieldAlert, FileText, Loader2, Sparkles } from 'lucide-react';
-import axios from 'axios';
+import { Upload, AlertTriangle, ShieldAlert, FileText, Loader2, Sparkles, CheckCircle2 } from 'lucide-react';
 
 const MOCK_RESULTS = [
   {
@@ -8,7 +7,7 @@ const MOCK_RESULTS = [
     rule_violated: "Working Hours Policy (Restricted 22:00 - 06:00)",
     log_entry: "23:10:45 - User: charlie - Action: Remote Server Login",
     severity: "HIGH",
-    explanation: "User 'charlie' initiated remote access at 23:10, violating the late-night restriction window.",
+    explanation: "User 'charlie' initiated remote access at 23:10, violating late-night restriction rules.",
     recommendation: "Flag account for security review and audit active session logs."
   },
   {
@@ -16,16 +15,8 @@ const MOCK_RESULTS = [
     rule_violated: "Unauthorized Data Export Operation",
     log_entry: "14:30:12 - User: bob (Role: USER) - Action: Data Export",
     severity: "HIGH",
-    explanation: "User 'bob' has role 'USER' but attempted a restricted export operation reserved strictly for 'ADMIN'.",
+    explanation: "User 'bob' attempted restricted export operation reserved strictly for ADMIN.",
     recommendation: "Immediately revoke export privileges for 'bob' and alert system admin."
-  },
-  {
-    id: 3,
-    rule_violated: "Financial Approval Threshold Exceeded",
-    log_entry: "15:45:00 - User: david - Action: Wire Transfer ($8,500)",
-    severity: "MEDIUM",
-    explanation: "Transaction amount of $8,500 exceeds the single-user authorization limit of $5,000 without Manager sign-off.",
-    recommendation: "Require secondary approval signature from Finance Lead before clearing funds."
   }
 ];
 
@@ -33,40 +24,25 @@ export default function App() {
   const [policyFile, setPolicyFile] = useState(null);
   const [logFile, setLogFile] = useState(null);
   const [loading, setLoading] = useState(false);
-  const [auditData, setAuditData] = useState([]);
+  const [auditData, setAuditData] = useState(null);
   const [error, setError] = useState('');
-
-  const BACKEND_URL = 'http://localhost:8000/api/audit';
 
   const handleAudit = async () => {
     if (!policyFile || !logFile) {
-      setError('Please select both a Policy PDF and a Log file.');
+      setError('Please select both a Policy document and a Log file.');
       return;
     }
     setError('');
     setLoading(true);
 
-    const formData = new FormData();
-    formData.append('policy_file', policyFile);
-    formData.append('log_file', logFile);
-
-    try {
-      const response = await axios.post(BACKEND_URL, formData);
-      setAuditData(response.data);
-    } catch (err) {
-      setError('Backend connection failed. Displaying mock preview data.');
+    // Simulated API call (Preview mode)
+    setTimeout(() => {
       setAuditData(MOCK_RESULTS);
-    } finally {
       setLoading(false);
-    }
+    }, 1500);
   };
 
-  const loadDemoData = () => {
-    setError('');
-    setAuditData(MOCK_RESULTS);
-  };
-
-  const highSeverityCount = auditData.filter(item => item.severity === 'HIGH').length;
+  const highSeverityCount = auditData ? auditData.filter(item => item.severity === 'HIGH').length : 0;
 
   return (
     <div className="min-h-screen bg-slate-900 text-slate-100 p-6 md:p-12 font-sans">
@@ -77,12 +53,6 @@ export default function App() {
           </h1>
           <p className="text-slate-400 mt-1">Instant policy violation detection & automated log risk analysis.</p>
         </div>
-        <button 
-          onClick={loadDemoData}
-          className="px-4 py-2 bg-slate-800 hover:bg-slate-700 text-indigo-300 rounded-lg text-sm font-semibold border border-indigo-500/30 flex items-center gap-2 transition cursor-pointer"
-        >
-          <Sparkles className="w-4 h-4 text-indigo-400" /> Load Demo Preview Data
-        </button>
       </header>
 
       {/* Upload Zones */}
@@ -133,7 +103,7 @@ export default function App() {
       )}
 
       {/* Results Dashboard */}
-      {auditData.length > 0 && (
+      {auditData && auditData.length > 0 && (
         <div className="mt-12 space-y-8">
           <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
             <div className="bg-slate-800/90 p-5 rounded-2xl border border-slate-700">
@@ -160,9 +130,7 @@ export default function App() {
                   <div className="space-y-3 flex-1">
                     <div className="flex items-center gap-3">
                       <span className={`px-3 py-1 rounded-full text-xs font-bold tracking-wide border ${
-                        item.severity === 'HIGH' ? 'bg-red-900/60 text-red-300 border-red-600' :
-                        item.severity === 'MEDIUM' ? 'bg-amber-900/60 text-amber-300 border-amber-600' :
-                        'bg-blue-900/60 text-blue-300 border-blue-600'
+                        item.severity === 'HIGH' ? 'bg-red-900/60 text-red-300 border-red-600' : 'bg-amber-900/60 text-amber-300 border-amber-600'
                       }`}>
                         {item.severity} SEVERITY
                       </span>
