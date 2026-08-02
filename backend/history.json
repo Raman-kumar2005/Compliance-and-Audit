@@ -1,0 +1,680 @@
+[
+    {
+        "id": "021402c0-621c-4a4b-ab77-b28142926f18",
+        "timestamp": "2026-08-02T16:20:44.856952",
+        "policy_filename": "sample_policy.txt",
+        "log_filename": "Cleaned_HR_Data_Analysis.csv",
+        "metrics": {
+            "compliance_score": 84,
+            "risk_distribution": {
+                "Low": 2,
+                "Medium": 1,
+                "High": 0,
+                "Critical": 0
+            },
+            "violations_by_department": {
+                "Finance": 1,
+                "HR": 0,
+                "IT": 2,
+                "Sales": 0,
+                "Ops": 0
+            },
+            "compliance_trend": [
+                71,
+                74,
+                76,
+                79,
+                81,
+                84
+            ]
+        },
+        "violations": [
+            {
+                "id": 1,
+                "employee": "N/A - Systemic Issue",
+                "department": "IT",
+                "rule_violated": "Authentication: All users must have MFA (Multi-Factor Authentication) enabled at all times to access company systems.",
+                "log_entry": "The provided system logs do not contain any fields or entries related to Multi-Factor Authentication (MFA) status for users or access events.",
+                "severity": "Medium",
+                "explanation": "The system logs provided are insufficient to verify compliance with the Multi-Factor Authentication (MFA) policy. There is no data indicating whether MFA is enabled or used by any employee when accessing company systems. This poses a significant auditing gap for a critical security control.",
+                "recommendation": "Implement comprehensive logging for MFA status and usage across all company systems. Integrate these logs into a central Security Information and Event Management (SIEM) system to ensure auditable proof of MFA enablement and usage."
+            },
+            {
+                "id": 2,
+                "employee": "N/A - Systemic Issue",
+                "department": "IT",
+                "rule_violated": "Data Security: All employee laptops and devices must be encrypted to protect sensitive data.",
+                "log_entry": "The provided system logs do not contain any information pertaining to employee laptops or other devices, including their encryption status.",
+                "severity": "Low",
+                "explanation": "The logs lack any details regarding the encryption status of employee laptops and devices. Consequently, compliance with the policy requiring all devices to be encrypted cannot be verified, leaving sensitive company data potentially exposed in case of device loss or theft.",
+                "recommendation": "Deploy an asset management solution that tracks all company-issued devices and their encryption status. Ensure this data is logged and readily available for compliance auditing to confirm adherence to the data security policy."
+            },
+            {
+                "id": 3,
+                "employee": "N/A - Systemic Issue",
+                "department": "Finance",
+                "rule_violated": "Offboarding: Upon offboarding or termination, user access must be revoked within 1 day (24 hours) to prevent unauthorized access.",
+                "log_entry": "The provided system logs only show 'Active' employees and do not contain any offboarding or termination dates, nor corresponding access revocation timestamps for any user.",
+                "severity": "Low",
+                "explanation": "The logs do not provide any evidence of user offboarding or the timeliness of access revocation. While no direct violations of the 24-hour window are visible for current active employees, the absence of this critical audit trail poses a potential unauthorized access risk and a financial compliance risk (e.g., continued software license costs for inactive users, potential for financial fraud by ex-employees with lingering access). Finance must ensure robust processes are in place to prevent such risks.",
+                "recommendation": "Establish a clear offboarding process that includes auditable records for termination dates and corresponding access revocation timestamps across all relevant systems. Integrate these logs into a central system for timely verification and to mitigate both security and financial risks associated with former employee access."
+            }
+        ]
+    },
+    {
+        "id": "d3dcfd07-38ad-454a-97d6-5317fada1513",
+        "timestamp": "2026-08-02T16:19:25.398278",
+        "policy_filename": "Enterprise_HR_Compliance_Policy.pdf",
+        "log_filename": "sample_records.csv",
+        "metrics": {
+            "compliance_score": 80,
+            "risk_distribution": {
+                "Low": 0,
+                "Medium": 1,
+                "High": 2,
+                "Critical": 0
+            },
+            "violations_by_department": {
+                "Finance": 0,
+                "HR": 0,
+                "IT": 3,
+                "Sales": 0,
+                "Ops": 0
+            },
+            "compliance_trend": [
+                70,
+                73,
+                75,
+                76,
+                78,
+                80
+            ]
+        },
+        "violations": [
+            {
+                "id": 1,
+                "employee": "Bob Jones",
+                "department": "IT",
+                "rule_violated": "Enterprise Security Protocol: Multi-Factor Authentication (MFA) Requirement",
+                "log_entry": "U002 Bob Jones False NaN True active",
+                "severity": "Medium",
+                "explanation": "User Bob Jones (U002) does not have Multi-Factor Authentication (MFA) enabled. This violates implied enterprise security protocols for user authentication, which are expected under the 'strictly adhere to enterprise security and log compliance protocols' clause for all personnel, significantly increasing the risk of unauthorized access.",
+                "recommendation": "Immediately enable and enforce MFA for user U002 (Bob Jones). Conduct a wider audit to identify all users without MFA and implement a mandatory MFA enrollment and enforcement policy across the organization."
+            },
+            {
+                "id": 2,
+                "employee": "Charlie Brown",
+                "department": "IT",
+                "rule_violated": "Enterprise Security Protocol: Immediate Access Revocation Upon Termination",
+                "log_entry": "U003 Charlie Brown True 5.0 True terminated",
+                "severity": "High",
+                "explanation": "Access for the terminated employee Charlie Brown (U003) was revoked 5 days after their termination date. Enterprise security protocols, derived from the 'strictly adhere to enterprise security and log compliance protocols' clause, mandate immediate access revocation upon termination to prevent potential insider threats or unauthorized post-termination access.",
+                "recommendation": "Review and automate the termination process to ensure all system access is revoked on the employee's last day. Investigate any activities performed by U003 during the 5-day post-termination window to mitigate any potential breaches."
+            },
+            {
+                "id": 3,
+                "employee": "David Lee",
+                "department": "IT",
+                "rule_violated": "Enterprise Data Security Protocol: Encryption of Employee Records",
+                "log_entry": "U004 David Lee True NaN False active",
+                "severity": "High",
+                "explanation": "The record for user David Lee (U004) is not encrypted ('is_encrypted: False'). This is a critical data security vulnerability, violating implied enterprise security protocols for protecting sensitive employee data at rest, as per the 'strictly adhere to enterprise security and log compliance protocols' and 'permanently archived in compliance databases' requirements.",
+                "recommendation": "Immediately encrypt the record for U004 (David Lee). Conduct a full audit of all employee records in the compliance database to ensure they are properly encrypted according to policy. Implement automated encryption for all new and existing records to ensure data integrity and confidentiality."
+            }
+        ]
+    },
+    {
+        "id": "43bbb47a-d8a8-42c9-ab0f-fc434398ec9c",
+        "timestamp": "2026-08-02T16:18:39.159853",
+        "policy_filename": "Enterprise_HR_Compliance_Policy.pdf",
+        "log_filename": "sample_records.csv",
+        "metrics": {
+            "compliance_score": 60,
+            "risk_distribution": {
+                "Low": 0,
+                "Medium": 2,
+                "High": 1,
+                "Critical": 0
+            },
+            "violations_by_department": {
+                "Finance": 0,
+                "HR": 0,
+                "IT": 3,
+                "Sales": 0,
+                "Ops": 0
+            },
+            "compliance_trend": [
+                40,
+                45,
+                50,
+                53,
+                57,
+                60
+            ]
+        },
+        "violations": [
+            {
+                "id": 1,
+                "employee": "Bob Jones",
+                "department": "IT",
+                "rule_violated": "Enterprise Security Protocol - MFA Requirement",
+                "log_entry": "U002 Bob Jones False NaN True active",
+                "severity": "Medium",
+                "explanation": "User Bob Jones does not have Multi-Factor Authentication (MFA) enabled. While not explicitly stated for all employees, 'enterprise security and log compliance protocols' for contract personnel (Section 2) implies a general standard for robust security, which includes MFA for all user accounts to mitigate unauthorized access risks.",
+                "recommendation": "Enable MFA for user Bob Jones immediately. Conduct a comprehensive audit across all user accounts to identify and rectify other instances where MFA is not enabled. Implement a mandatory MFA enrollment policy."
+            },
+            {
+                "id": 2,
+                "employee": "Charlie Brown",
+                "department": "IT",
+                "rule_violated": "Enterprise Security Protocol - Timely Access Revocation",
+                "log_entry": "U003 Charlie Brown True 5.0 True terminated",
+                "severity": "High",
+                "explanation": "For terminated employee Charlie Brown, access was revoked 5 days after the termination date. Delayed access revocation poses a critical security vulnerability, potentially allowing a former employee access to sensitive systems and data post-employment. Section 6 emphasizes 'status transitions (Active/Terminated)' logging, implying proper management.",
+                "recommendation": "Implement automated or strictly enforced manual processes to ensure immediate access revocation upon employee termination. Review audit logs for any activity by Charlie Brown during the 5-day post-termination period and assess potential data breaches. Update offboarding checklists to prioritize access termination."
+            },
+            {
+                "id": 3,
+                "employee": "David Lee",
+                "department": "IT",
+                "rule_violated": "Enterprise Security Protocol - Data/Asset Encryption Requirement",
+                "log_entry": "U004 David Lee True NaN False active",
+                "severity": "Medium",
+                "explanation": "The 'is_encrypted' flag is 'False' for user David Lee, indicating that associated data or system access (as inferred from the log column) is not encrypted. This violates implicit 'enterprise security protocols' (Section 2), which typically mandate encryption to protect data confidentiality and integrity.",
+                "recommendation": "Ensure all user data, assets, and relevant systems are configured for encryption according to enterprise security standards. Conduct a full encryption audit across all active user accounts and associated resources to ensure compliance."
+            }
+        ]
+    },
+    {
+        "id": "8fd5c5b7-77fc-4525-b30a-555c3ee89f29",
+        "timestamp": "2026-08-02T16:14:38.476211",
+        "policy_filename": "Company_Expense_Compliance_Policy.pdf",
+        "log_filename": "Cleaned_HR_Data_Analysis.csv",
+        "metrics": {
+            "compliance_score": 57,
+            "risk_distribution": {
+                "Low": 43,
+                "Medium": 0,
+                "High": 0,
+                "Critical": 0
+            },
+            "violations_by_department": {
+                "Finance": 0,
+                "HR": 0,
+                "IT": 4,
+                "Sales": 37,
+                "Ops": 2
+            },
+            "compliance_trend": [
+                42,
+                47,
+                50,
+                53,
+                55,
+                57
+            ]
+        },
+        "violations": [
+            {
+                "id": 1,
+                "employee": "E-3427",
+                "department": "Ops",
+                "rule_violated": "Training Completion Certificate Mandatory",
+                "log_entry": "0          3427  20-Sep-19  Production Technician I         CCDR         Active     Contract  Zone C                  Temporary  Production             Finance & Accounting  07-10-1969    MA     Female     White     Widowed        Fully Meets                        4  14-01-2023                 1                   2                        3     15-Jul-23  Leadership Development      Internal           Failed                        2         606.11   50",
+                "severity": "Low",
+                "explanation": "Employee ID 3427 has a training outcome of 'Failed', which means a completion certificate is not available as per policy.",
+                "recommendation": "Investigate why training was not completed or failed. Implement measures to ensure successful completion or alternative arrangements. Document any exceptions."
+            },
+            {
+                "id": 2,
+                "employee": "E-3428",
+                "department": "Ops",
+                "rule_violated": "Training Completion Certificate Mandatory",
+                "log_entry": "1          3428  11-Feb-23  Production Technician I           EW         Active     Contract  Zone A                  Part-Time  Production                           Aerial  30-08-1965    MA       Male  Hispanic     Widowed        Fully Meets                        3  09-09-2022                 2                   1                        5     12-Sep-22        Customer Service      External       Incomplete                        4         673.02   58",
+                "severity": "Low",
+                "explanation": "Employee ID 3428 has a training outcome of 'Incomplete', which means a completion certificate is not available as per policy.",
+                "recommendation": "Investigate why training was not completed or failed. Implement measures to ensure successful completion or alternative arrangements. Document any exceptions."
+            },
+            {
+                "id": 3,
+                "employee": "E-3429",
+                "department": "Sales",
+                "rule_violated": "Training Completion Certificate Mandatory",
+                "log_entry": "2          3429  10-Dec-18       Area Sales Manager           PL         Active    Full-Time  Zone B                  Part-Time              Sales             General - Sga  06-10-1991    MA       Male  Hispanic     Widowed        Fully Meets                        4  27-05-2023                 1                   2                        1     13-Aug-22  Leadership Development      External           Failed                        2         413.28   27",
+                "severity": "Low",
+                "explanation": "Employee ID 3429 has a training outcome of 'Failed', which means a completion certificate is not available as per policy.",
+                "recommendation": "Investigate why training was not completed or failed. Implement measures to ensure successful completion or alternative arrangements. Document any exceptions."
+            },
+            {
+                "id": 4,
+                "employee": "E-3431",
+                "department": "Sales",
+                "rule_violated": "Training Completion Certificate Mandatory",
+                "log_entry": "4          3431  29-Jun-19       Area Sales Manager          TNS         Active     Contract  Zone A                  Temporary              Sales             General - Con  29-08-1969    FL     Female     Other     Married        Fully Meets                        3  25-11-2022                 2                   5                        3     13-Jul-23        Technical Skills      External           Failed                        5         399.03   50",
+                "severity": "Low",
+                "explanation": "Employee ID 3431 has a training outcome of 'Failed', which means a completion certificate is not available as per policy.",
+                "recommendation": "Investigate why training was not completed or failed. Implement measures to ensure successful completion or alternative arrangements. Document any exceptions."
+            },
+            {
+                "id": 5,
+                "employee": "E-3436",
+                "department": "Sales",
+                "rule_violated": "Training Completion Certificate Mandatory",
+                "log_entry": "9          3436  21-Jan-22       Area Sales Manager          BPC         Active    Part-Time  Zone B                  Temporary              Sales                 Engineers  11-11-1949    TX       Male     Asian     Widowed        Fully Meets                        5  30-07-2023                 5                   5                        2     09-Apr-23  Leadership Development      Internal           Failed                        5         192.61   73",
+                "severity": "Low",
+                "explanation": "Employee ID 3436 has a training outcome of 'Failed', which means a completion certificate is not available as per policy.",
+                "recommendation": "Investigate why training was not completed or failed. Implement measures to ensure successful completion or alternative arrangements. Document any exceptions."
+            },
+            {
+                "id": 6,
+                "employee": "E-3437",
+                "department": "Sales",
+                "rule_violated": "Training Completion Certificate Mandatory",
+                "log_entry": "10         3437  04-Aug-23       Area Sales Manager          SVG         Active     Contract  Zone B                  Temporary              Sales          Field Operations  26-01-1964    IN     Female     Other      Single        Fully Meets                        5  15-10-2022                 3                   2                        5     20-Oct-22        Technical Skills      Internal           Failed                        1         455.68   59",
+                "severity": "Low",
+                "explanation": "Employee ID 3437 has a training outcome of 'Failed', which means a completion certificate is not available as per policy.",
+                "recommendation": "Investigate why training was not completed or failed. Implement measures to ensure successful completion or alternative arrangements. Document any exceptions."
+            },
+            {
+                "id": 7,
+                "employee": "E-3438",
+                "department": "Sales",
+                "rule_violated": "Training Completion Certificate Mandatory",
+                "log_entry": "11         3438  10-Aug-18       Area Sales Manager          MSC         Active    Full-Time  Zone C                  Temporary              Sales             General - Con  06-04-1948    GA     Female     Asian     Married        Fully Meets                        3  28-10-2022                 4                   2                        5     05-Oct-22        Technical Skills      Internal           Failed                        2         208.17   70",
+                "severity": "Low",
+                "explanation": "Employee ID 3438 has a training outcome of 'Failed', which means a completion certificate is not available as per policy.",
+                "recommendation": "Investigate why training was not completed or failed. Implement measures to ensure successful completion or alternative arrangements. Document any exceptions."
+            },
+            {
+                "id": 8,
+                "employee": "E-3439",
+                "department": "Sales",
+                "rule_violated": "Training Completion Certificate Mandatory",
+                "log_entry": "12         3439  25-May-22       Area Sales Manager           EW         Active    Full-Time  Zone A                  Temporary              Sales                  Splicing  24-11-1981    CO       Male     Other      Single        Fully Meets                        3  30-10-2022                 1                   2                        5     09-Mar-23        Technical Skills      External       Incomplete                        1         421.07   41",
+                "severity": "Low",
+                "explanation": "Employee ID 3439 has a training outcome of 'Incomplete', which means a completion certificate is not available as per policy.",
+                "recommendation": "Investigate why training was not completed or failed. Implement measures to ensure successful completion or alternative arrangements. Document any exceptions."
+            },
+            {
+                "id": 9,
+                "employee": "E-3440",
+                "department": "Sales",
+                "rule_violated": "Training Completion Certificate Mandatory",
+                "log_entry": "13         3440  05-Dec-19       Area Sales Manager         CCDR         Active     Contract  Zone A                  Full-Time              Sales      Finance & Accounting  06-11-1951    KY     Female     White    Divorced        Fully Meets                        3  24-09-2022                 1                   4                        5     29-May-23    Communication Skills      External           Failed                        1         649.03   68",
+                "severity": "Low",
+                "explanation": "Employee ID 3440 has a training outcome of 'Failed', which means a completion certificate is not available as per policy.",
+                "recommendation": "Investigate why training was not completed or failed. Implement measures to ensure successful completion or alternative arrangements. Document any exceptions."
+            },
+            {
+                "id": 10,
+                "employee": "E-3443",
+                "department": "IT",
+                "rule_violated": "Training Completion Certificate Mandatory",
+                "log_entry": "16         3443  05-Apr-21       Area Sales Manager          WBL         Active    Full-Time  Zone C                  Part-Time              IT/IS  Project Management - Con  08-04-1994    KY       Male     Asian     Widowed        Fully Meets                        3  29-04-2023                 2                   2                        4     18-Feb-23        Technical Skills      External           Failed                        3         402.13   27",
+                "severity": "Low",
+                "explanation": "Employee ID 3443 has a training outcome of 'Failed', which means a completion certificate is not available as per policy.",
+                "recommendation": "Investigate why training was not completed or failed. Implement measures to ensure successful completion or alternative arrangements. Document any exceptions."
+            },
+            {
+                "id": 11,
+                "employee": "E-3444",
+                "department": "Sales",
+                "rule_violated": "Training Completion Certificate Mandatory",
+                "log_entry": "17         3444  28-Nov-21       Area Sales Manager          NEL         Active     Contract  Zone A                  Part-Time              Sales                 Engineers  15-11-1983    KY       Male     Other     Widowed        Fully Meets                        3  14-12-2022                 1                   2                        4     02-Nov-22        Technical Skills      External           Failed                        2         388.84   38",
+                "severity": "Low",
+                "explanation": "Employee ID 3444 has a training outcome of 'Failed', which means a completion certificate is not available as per policy.",
+                "recommendation": "Investigate why training was not completed or failed. Implement measures to ensure successful completion or alternative arrangements. Document any exceptions."
+            },
+            {
+                "id": 12,
+                "employee": "E-3446",
+                "department": "Sales",
+                "rule_violated": "Training Completion Certificate Mandatory",
+                "log_entry": "19         3446  24-Aug-21       Area Sales Manager          BPC         Active    Part-Time  Zone A                  Part-Time              Sales          Field Operations  01-05-1996    TX     Female     White    Divorced            Exceeds                        2  21-05-2023                 4                   3                        5     11-Dec-22        Technical Skills      Internal           Failed                        5         701.13   25",
+                "severity": "Low",
+                "explanation": "Employee ID 3446 has a training outcome of 'Failed', which means a completion certificate is not available as per policy.",
+                "recommendation": "Investigate why training was not completed or failed. Implement measures to ensure successful completion or alternative arrangements. Document any exceptions."
+            },
+            {
+                "id": 13,
+                "employee": "E-3452",
+                "department": "Sales",
+                "rule_violated": "Training Completion Certificate Mandatory",
+                "log_entry": "22         3452  08-Nov-22       Area Sales Manager          PYZ         Active    Part-Time  Zone A                  Part-Time              Sales             General - Con  07-01-1947    IN       Male     Black    Divorced        Fully Meets                        2  19-01-2023                 5                   5                        2     13-Sep-22        Customer Service      Internal           Failed                        1         691.04   75",
+                "severity": "Low",
+                "explanation": "Employee ID 3452 has a training outcome of 'Failed', which means a completion certificate is not available as per policy.",
+                "recommendation": "Investigate why training was not completed or failed. Implement measures to ensure successful completion or alternative arrangements. Document any exceptions."
+            },
+            {
+                "id": 14,
+                "employee": "E-3460",
+                "department": "Sales",
+                "rule_violated": "Training Completion Certificate Mandatory",
+                "log_entry": "28         3460  19-Feb-20       Area Sales Manager          SVG         Active    Full-Time  Zone A                  Full-Time              Sales                    Aerial  10-02-1944    TX       Male     Asian     Married        Fully Meets                        3  16-11-2022                 4                   3                        3     08-Jul-23    Communication Skills      External       Incomplete                        5         919.52   76",
+                "severity": "Low",
+                "explanation": "Employee ID 3460 has a training outcome of 'Incomplete', which means a completion certificate is not available as per policy.",
+                "recommendation": "Investigate why training was not completed or failed. Implement measures to ensure successful completion or alternative arrangements. Document any exceptions."
+            },
+            {
+                "id": 15,
+                "employee": "E-3463",
+                "department": "Sales",
+                "rule_violated": "Training Completion Certificate Mandatory",
+                "log_entry": "30         3463  30-Apr-20       Area Sales Manager          TNS         Active    Part-Time  Zone A                  Temporary              Sales          Field Operations  21-06-1951    IN       Male  Hispanic      Single        Fully Meets                        1  18-09-2022                 4                   3                        4     29-Aug-22        Technical Skills      Internal       Incomplete                        4         926.19   69",
+                "severity": "Low",
+                "explanation": "Employee ID 3463 has a training outcome of 'Incomplete', which means a completion certificate is not available as per policy.",
+                "recommendation": "Investigate why training was not completed or failed. Implement measures to ensure successful completion or alternative arrangements. Document any exceptions."
+            },
+            {
+                "id": 16,
+                "employee": "E-3465",
+                "department": "Sales",
+                "rule_violated": "Training Completion Certificate Mandatory",
+                "log_entry": "32         3465  08-Nov-21       Area Sales Manager          WBL         Active    Full-Time  Zone B                  Full-Time              Sales             General - Con  07-01-1962    MA       Male     Asian    Divorced  Needs Improvement                        3  19-05-2023                 5                   4                        3     04-Jun-23    Communication Skills      External       Incomplete                        1         706.10   59",
+                "severity": "Low",
+                "explanation": "Employee ID 3465 has a training outcome of 'Incomplete', which means a completion certificate is not available as per policy.",
+                "recommendation": "Investigate why training was not completed or failed. Implement measures to ensure successful completion or alternative arrangements. Document any exceptions."
+            },
+            {
+                "id": 17,
+                "employee": "E-3467",
+                "department": "Sales",
+                "rule_violated": "Training Completion Certificate Mandatory",
+                "log_entry": "34         3467  06-May-20       Area Sales Manager          WBL         Active     Contract  Zone A                  Part-Time              Sales                  Fielders  14-05-1987    KY     Female     Asian    Divorced            Exceeds                        1  27-06-2023                 4                   3                        2     24-Feb-23        Technical Skills      Internal       Incomplete                        1         759.70   33",
+                "severity": "Low",
+                "explanation": "Employee ID 3467 has a training outcome of 'Incomplete', which means a completion certificate is not available as per policy.",
+                "recommendation": "Investigate why training was not completed or failed. Implement measures to ensure successful completion or alternative arrangements. Document any exceptions."
+            },
+            {
+                "id": 18,
+                "employee": "E-3473",
+                "department": "Sales",
+                "rule_violated": "Training Completion Certificate Mandatory",
+                "log_entry": "38         3473  29-Jun-23       Area Sales Manager           EW         Active    Part-Time  Zone A                  Temporary              Sales              Shop (Fleet)  01-10-1950    CO       Male  Hispanic     Widowed            Exceeds                        2  28-06-2023                 3                   4                        4     06-Dec-22    Communication Skills      External           Failed                        5         789.99   73",
+                "severity": "Low",
+                "explanation": "Employee ID 3473 has a training outcome of 'Failed', which means a completion certificate is not available as per policy.",
+                "recommendation": "Investigate why training was not completed or failed. Implement measures to ensure successful completion or alternative arrangements. Document any exceptions."
+            },
+            {
+                "id": 19,
+                "employee": "E-3474",
+                "department": "Sales",
+                "rule_violated": "Training Completion Certificate Mandatory",
+                "log_entry": "39         3474  09-Mar-20       Area Sales Manager          MSC         Active    Full-Time  Zone A                  Temporary              Sales                      Catv  16-12-1965    CO       Male     Other    Divorced        Fully Meets                        2  09-05-2023                 3                   1                        2     01-Sep-22        Customer Service      External       Incomplete                        5         155.51   55",
+                "severity": "Low",
+                "explanation": "Employee ID 3474 has a training outcome of 'Incomplete', which means a completion certificate is not available as per policy.",
+                "recommendation": "Investigate why training was not completed or failed. Implement measures to ensure successful completion or alternative arrangements. Document any exceptions."
+            },
+            {
+                "id": 20,
+                "employee": "E-3476",
+                "department": "Sales",
+                "rule_violated": "Training Completion Certificate Mandatory",
+                "log_entry": "41         3476  12-Jun-23       Area Sales Manager          PYZ         Active    Part-Time  Zone A                  Temporary              Sales                  Fielders  20-06-1945    MA       Male     Asian    Divorced  Needs Improvement                        2  03-03-2023                 5                   5                        3     18-Nov-22  Leadership Development      Internal       Incomplete                        4         533.50   78",
+                "severity": "Low",
+                "explanation": "Employee ID 3476 has a training outcome of 'Incomplete', which means a completion certificate is not available as per policy.",
+                "recommendation": "Investigate why training was not completed or failed. Implement measures to ensure successful completion or alternative arrangements. Document any exceptions."
+            },
+            {
+                "id": 21,
+                "employee": "E-3477",
+                "department": "IT",
+                "rule_violated": "Training Completion Certificate Mandatory",
+                "log_entry": "42         3477  07-Apr-19       Area Sales Manager          PYZ         Active    Part-Time  Zone A                  Full-Time              IT/IS                    Aerial  03-12-1969    KY     Female     Asian     Widowed  Needs Improvement                        2  05-12-2022                 1                   2                        1     07-Nov-22  Leadership Development      External           Failed                        5         429.48   50",
+                "severity": "Low",
+                "explanation": "Employee ID 3477 has a training outcome of 'Failed', which means a completion certificate is not available as per policy.",
+                "recommendation": "Investigate why training was not completed or failed. Implement measures to ensure successful completion or alternative arrangements. Document any exceptions."
+            },
+            {
+                "id": 22,
+                "employee": "E-3478",
+                "department": "Sales",
+                "rule_violated": "Training Completion Certificate Mandatory",
+                "log_entry": "43         3478  17-Sep-18       Area Sales Manager          WBL         Active    Full-Time  Zone C                  Temporary              Sales     Wireline Construction  10-10-1957    KY     Female  Hispanic     Married        Fully Meets                        2  29-11-2022                 3                   4                        1     05-Oct-22        Technical Skills      External       Incomplete                        1         526.74   61",
+                "severity": "Low",
+                "explanation": "Employee ID 3478 has a training outcome of 'Incomplete', which means a completion certificate is not available as per policy.",
+                "recommendation": "Investigate why training was not completed or failed. Implement measures to ensure successful completion or alternative arrangements. Document any exceptions."
+            },
+            {
+                "id": 23,
+                "employee": "E-3490",
+                "department": "Sales",
+                "rule_violated": "Training Completion Certificate Mandatory",
+                "log_entry": "52         3490  11-Feb-19       Area Sales Manager          MSC         Active    Part-Time  Zone A                  Part-Time              Sales             General - Sga  10-07-1991    TX     Female  Hispanic    Divorced        Fully Meets                        2  12-10-2022                 5                   3                        2     19-Jul-23        Technical Skills      Internal           Failed                        3         389.59   28",
+                "severity": "Low",
+                "explanation": "Employee ID 3490 has a training outcome of 'Failed', which means a completion certificate is not available as per policy.",
+                "recommendation": "Investigate why training was not completed or failed. Implement measures to ensure successful completion or alternative arrangements. Document any exceptions."
+            },
+            {
+                "id": 24,
+                "employee": "E-3491",
+                "department": "Sales",
+                "rule_violated": "Training Completion Certificate Mandatory",
+                "log_entry": "53         3491  26-Jan-21       Area Sales Manager          NEL         Active     Contract  Zone B                  Full-Time              Sales          Field Operations  02-06-1973    TX       Male     White     Widowed        Fully Meets                        5  10-09-2022                 3                   4                        5     14-Jul-23      Project Management      Internal       Incomplete                        3         442.56   48",
+                "severity": "Low",
+                "explanation": "Employee ID 3491 has a training outcome of 'Incomplete', which means a completion certificate is not available as per policy.",
+                "recommendation": "Investigate why training was not completed or failed. Implement measures to ensure successful completion or alternative arrangements. Document any exceptions."
+            },
+            {
+                "id": 25,
+                "employee": "E-3492",
+                "department": "Sales",
+                "rule_violated": "Training Completion Certificate Mandatory",
+                "log_entry": "54         3492  26-Nov-19       Area Sales Manager           PL         Active    Full-Time  Zone C                  Full-Time              Sales             General - Con  08-01-1993    CO       Male     Asian     Married        Fully Meets                        1  13-01-2023                 1                   5                        5     06-Sep-22      Project Management      Internal       Incomplete                        3         327.66   26",
+                "severity": "Low",
+                "explanation": "Employee ID 3492 has a training outcome of 'Incomplete', which means a completion certificate is not available as per policy.",
+                "recommendation": "Investigate why training was not completed or failed. Implement measures to ensure successful completion or alternative arrangements. Document any exceptions."
+            },
+            {
+                "id": 26,
+                "employee": "E-3496",
+                "department": "Sales",
+                "rule_violated": "Training Completion Certificate Mandatory",
+                "log_entry": "58         3496  02-Dec-21       Area Sales Manager          WBL         Active     Contract  Zone A                  Part-Time              Sales             General - Sga  19-09-1964    CA       Male     Other     Widowed        Fully Meets                        5  26-12-2022                 1                   3                        2     16-Feb-23      Project Management      Internal       Incomplete                        1         806.87   57",
+                "severity": "Low",
+                "explanation": "Employee ID 3496 has a training outcome of 'Incomplete', which means a completion certificate is not available as per policy.",
+                "recommendation": "Investigate why training was not completed or failed. Implement measures to ensure successful completion or alternative arrangements. Document any exceptions."
+            },
+            {
+                "id": 27,
+                "employee": "E-3498",
+                "department": "Sales",
+                "rule_violated": "Training Completion Certificate Mandatory",
+                "log_entry": "60         3498  26-Apr-23       Area Sales Manager          PYZ         Active    Full-Time  Zone A                  Full-Time              Sales             General - Sga  17-10-1998    KY     Female     White     Widowed        Fully Meets                        2  19-06-2023                 3                   3                        4     30-May-23      Project Management      External           Failed                        1         208.43   25",
+                "severity": "Low",
+                "explanation": "Employee ID 3498 has a training outcome of 'Failed', which means a completion certificate is not available as per policy.",
+                "recommendation": "Investigate why training was not completed or failed. Implement measures to ensure successful completion or alternative arrangements. Document any exceptions."
+            },
+            {
+                "id": 28,
+                "employee": "E-3499",
+                "department": "Sales",
+                "rule_violated": "Training Completion Certificate Mandatory",
+                "log_entry": "61         3499  25-Sep-18       Area Sales Manager          WBL         Active    Part-Time  Zone C                  Temporary              Sales          Field Operations  16-01-1971    KY     Female     Asian     Widowed        Fully Meets                        5  21-07-2023                 5                   3                        5     30-Jan-23        Technical Skills      Internal       Incomplete                        2         762.45   47",
+                "severity": "Low",
+                "explanation": "Employee ID 3499 has a training outcome of 'Incomplete', which means a completion certificate is not available as per policy.",
+                "recommendation": "Investigate why training was not completed or failed. Implement measures to ensure successful completion or alternative arrangements. Document any exceptions."
+            },
+            {
+                "id": 29,
+                "employee": "E-3500",
+                "department": "Sales",
+                "rule_violated": "Training Completion Certificate Mandatory",
+                "log_entry": "62         3500  20-Nov-18       Area Sales Manager          NEL         Active    Full-Time  Zone B                  Part-Time              Sales              Shop (Fleet)  25-02-2000    TX     Female     White    Divorced        Fully Meets                        1  14-05-2023                 4                   1                        4     15-Jun-23  Leadership Development      External       Incomplete                        4         779.79   18",
+                "severity": "Low",
+                "explanation": "Employee ID 3500 has a training outcome of 'Incomplete', which means a completion certificate is not available as per policy.",
+                "recommendation": "Investigate why training was not completed or failed. Implement measures to ensure successful completion or alternative arrangements. Document any exceptions."
+            },
+            {
+                "id": 30,
+                "employee": "E-3502",
+                "department": "Sales",
+                "rule_violated": "Training Completion Certificate Mandatory",
+                "log_entry": "63         3502  01-Oct-19       Area Sales Manager          BPC         Active    Full-Time  Zone C                  Temporary              Sales                  Splicing  29-06-1976    TX       Male     White     Married        Fully Meets                        1  24-04-2023                 5                   3                        5     03-Jan-23        Customer Service      External       Incomplete                        3         427.12   43",
+                "severity": "Low",
+                "explanation": "Employee ID 3502 has a training outcome of 'Incomplete', which means a completion certificate is not available as per policy.",
+                "recommendation": "Investigate why training was not completed or failed. Implement measures to ensure successful completion or alternative arrangements. Document any exceptions."
+            },
+            {
+                "id": 31,
+                "employee": "E-3505",
+                "department": "Sales",
+                "rule_violated": "Training Completion Certificate Mandatory",
+                "log_entry": "66         3505  29-Aug-20       Area Sales Manager           EW         Active     Contract  Zone B                  Temporary              Sales          Field Operations  24-07-1943    IN       Male  Hispanic     Widowed        Fully Meets                        1  10-11-2022                 4                   3                        2     13-Sep-22  Leadership Development      Internal           Failed                        5         260.97   77",
+                "severity": "Low",
+                "explanation": "Employee ID 3505 has a training outcome of 'Failed', which means a completion certificate is not available as per policy.",
+                "recommendation": "Investigate why training was not completed or failed. Implement measures to ensure successful completion or alternative arrangements. Document any exceptions."
+            },
+            {
+                "id": 32,
+                "employee": "E-3514",
+                "department": "Sales",
+                "rule_violated": "Training Completion Certificate Mandatory",
+                "log_entry": "73         3514  15-Apr-20       Area Sales Manager          BPC         Active    Full-Time  Zone B                  Part-Time              Sales     Wireline Construction  03-01-1958    TX       Male     Asian     Married        Fully Meets                        1  25-08-2022                 2                   1                        1     21-Feb-23  Leadership Development      Internal       Incomplete                        3         975.46   62",
+                "severity": "Low",
+                "explanation": "Employee ID 3514 has a training outcome of 'Incomplete', which means a completion certificate is not available as per policy.",
+                "recommendation": "Investigate why training was not completed or failed. Implement measures to ensure successful completion or alternative arrangements. Document any exceptions."
+            },
+            {
+                "id": 33,
+                "employee": "E-3516",
+                "department": "Sales",
+                "rule_violated": "Training Completion Certificate Mandatory",
+                "log_entry": "74         3516  07-Apr-22       Area Sales Manager          SVG         Active     Contract  Zone B                  Part-Time              Sales  Project Management - Con  25-06-1988    CO       Male     Asian    Divorced        Fully Meets                        5  15-11-2022                 2                   3                        5     22-Jun-23        Technical Skills      Internal       Incomplete                        1         570.42   34",
+                "severity": "Low",
+                "explanation": "Employee ID 3516 has a training outcome of 'Incomplete', which means a completion certificate is not available as per policy.",
+                "recommendation": "Investigate why training was not completed or failed. Implement measures to ensure successful completion or alternative arrangements. Document any exceptions."
+            },
+            {
+                "id": 34,
+                "employee": "E-3517",
+                "department": "Sales",
+                "rule_violated": "Training Completion Certificate Mandatory",
+                "log_entry": "75         3517  19-Feb-20       Area Sales Manager           EW         Active    Part-Time  Zone A                  Part-Time              Sales                  Splicing  04-01-1942    IN       Male  Hispanic     Widowed        Fully Meets                        4  01-01-2023                 4                   1                        1     17-Sep-22        Technical Skills      Internal           Failed                        3         391.31   78",
+                "severity": "Low",
+                "explanation": "Employee ID 3517 has a training outcome of 'Failed', which means a completion certificate is not available as per policy.",
+                "recommendation": "Investigate why training was not completed or failed. Implement measures to ensure successful completion or alternative arrangements. Document any exceptions."
+            },
+            {
+                "id": 35,
+                "employee": "E-3519",
+                "department": "Sales",
+                "rule_violated": "Training Completion Certificate Mandatory",
+                "log_entry": "77         3519  19-Dec-21       Area Sales Manager          TNS         Active    Part-Time  Zone C                  Temporary              Sales                    Aerial  28-03-1951    CA       Male  Hispanic     Widowed        Fully Meets                        2  10-06-2023                 1                   3                        4     11-Dec-22  Leadership Development      External       Incomplete                        4         930.69   70",
+                "severity": "Low",
+                "explanation": "Employee ID 3519 has a training outcome of 'Incomplete', which means a completion certificate is not available as per policy.",
+                "recommendation": "Investigate why training was not completed or failed. Implement measures to ensure successful completion or alternative arrangements. Document any exceptions."
+            },
+            {
+                "id": 36,
+                "employee": "E-3520",
+                "department": "Sales",
+                "rule_violated": "Training Completion Certificate Mandatory",
+                "log_entry": "78         3520  13-Dec-20       Area Sales Manager          TNS         Active    Full-Time  Zone C                  Temporary              Sales  Project Management - Con  01-03-1963    ND     Female     Black    Divorced        Fully Meets                        1  17-09-2022                 5                   1                        1     11-Sep-22        Customer Service      External       Incomplete                        1         607.93   57",
+                "severity": "Low",
+                "explanation": "Employee ID 3520 has a training outcome of 'Incomplete', which means a completion certificate is not available as per policy.",
+                "recommendation": "Investigate why training was not completed or failed. Implement measures to ensure successful completion or alternative arrangements. Document any exceptions."
+            },
+            {
+                "id": 37,
+                "employee": "E-3521",
+                "department": "Sales",
+                "rule_violated": "Training Completion Certificate Mandatory",
+                "log_entry": "79         3521  26-Feb-19       Area Sales Manager          WBL         Active     Contract  Zone C                  Part-Time              Sales             General - Con  16-04-1949    KY     Female     Asian    Divorced        Fully Meets                        4  19-09-2022                 1                   3                        3     28-Feb-23    Communication Skills      Internal       Incomplete                        5         723.50   70",
+                "severity": "Low",
+                "explanation": "Employee ID 3521 has a training outcome of 'Incomplete', which means a completion certificate is not available as per policy.",
+                "recommendation": "Investigate why training was not completed or failed. Implement measures to ensure successful completion or alternative arrangements. Document any exceptions."
+            },
+            {
+                "id": 38,
+                "employee": "E-3523",
+                "department": "Sales",
+                "rule_violated": "Training Completion Certificate Mandatory",
+                "log_entry": "81         3523  25-Jun-21       Area Sales Manager         CCDR         Active    Full-Time  Zone A                  Temporary              Sales             General - Con  19-12-1978    KY     Female     Other      Single        Fully Meets                        2  27-02-2023                 3                   2                        3     10-Jul-23  Leadership Development      External       Incomplete                        2         451.18   43",
+                "severity": "Low",
+                "explanation": "Employee ID 3523 has a training outcome of 'Incomplete', which means a completion certificate is not available as per policy.",
+                "recommendation": "Investigate why training was not completed or failed. Implement measures to ensure successful completion or alternative arrangements. Document any exceptions."
+            },
+            {
+                "id": 39,
+                "employee": "E-3527",
+                "department": "Sales",
+                "rule_violated": "Training Completion Certificate Mandatory",
+                "log_entry": "83         3527  01-May-20       Area Sales Manager           PL         Active    Full-Time  Zone B                  Temporary              Sales                    Aerial  15-10-1974    CO       Male     Black     Married        Fully Meets                        1  27-02-2023                 1                   3                        2     06-Jan-23      Project Management      Internal           Failed                        4         396.28   46",
+                "severity": "Low",
+                "explanation": "Employee ID 3527 has a training outcome of 'Failed', which means a completion certificate is not available as per policy.",
+                "recommendation": "Investigate why training was not completed or failed. Implement measures to ensure successful completion or alternative arrangements. Document any exceptions."
+            },
+            {
+                "id": 40,
+                "employee": "E-3529",
+                "department": "Sales",
+                "rule_violated": "Training Completion Certificate Mandatory",
+                "log_entry": "85         3529  03-Jan-20       Area Sales Manager          SVG         Active    Part-Time  Zone C                  Full-Time              Sales          Field Operations  18-06-1994    IN       Male  Hispanic      Single        Fully Meets                        2  15-07-2023                 2                   3                        4     04-Sep-22      Project Management      Internal       Incomplete                        1         515.56   26",
+                "severity": "Low",
+                "explanation": "Employee ID 3529 has a training outcome of 'Incomplete', which means a completion certificate is not available as per policy.",
+                "recommendation": "Investigate why training was not completed or failed. Implement measures to ensure successful completion or alternative arrangements. Document any exceptions."
+            },
+            {
+                "id": 41,
+                "employee": "E-3532",
+                "department": "IT",
+                "rule_violated": "Training Completion Certificate Mandatory",
+                "log_entry": "88         3532  14-Oct-21       Area Sales Manager           EW         Active    Part-Time  Zone B                  Full-Time              IT/IS                  Wireless  27-11-1966    OR     Female     Black     Widowed        Fully Meets                        1  08-10-2022                 2                   2                        5     02-May-23        Technical Skills      Internal           Failed                        2         771.61   55",
+                "severity": "Low",
+                "explanation": "Employee ID 3532 has a training outcome of 'Failed', which means a completion certificate is not available as per policy.",
+                "recommendation": "Investigate why training was not completed or failed. Implement measures to ensure successful completion or alternative arrangements. Document any exceptions."
+            },
+            {
+                "id": 42,
+                "employee": "E-3535",
+                "department": "Sales",
+                "rule_violated": "Training Completion Certificate Mandatory",
+                "log_entry": "91         3535  11-Dec-18       Area Sales Manager          PYZ         Active    Full-Time  Zone A                  Temporary              Sales                  Fielders  02-02-1994    KY     Female     Black      Single        Fully Meets                        4  01-11-2022                 1                   5                        1     25-Jun-23        Technical Skills      External       Incomplete                        1         936.96   24",
+                "severity": "Low",
+                "explanation": "Employee ID 3535 has a training outcome of 'Incomplete', which means a completion certificate is not available as per policy.",
+                "recommendation": "Investigate why training was not completed or failed. Implement measures to ensure successful completion or alternative arrangements. Document any exceptions."
+            },
+            {
+                "id": 43,
+                "employee": "E-3539",
+                "department": "Sales",
+                "rule_violated": "Training Completion Certificate Mandatory",
+                "log_entry": "93         3539  08-Dec-19       Area Sales Manager          BPC         Active    Full-Time  Zone C                  Temporary              Sales             General - Con  27-11-1983    CO       Male  Hispanic      Single        Fully Meets                        5  06-02-2023                 3                   3                        4     17-Mar-23      Project Management      External           Failed                        4         234.77   36",
+                "severity": "Low",
+                "explanation": "Employee ID 3539 has a training outcome of 'Failed', which means a completion certificate is not available as per policy.",
+                "recommendation": "Investigate why training was not completed or failed. Implement measures to ensure successful completion or alternative arrangements. Document any exceptions."
+            },
+            {
+                "id": 44,
+                "employee": "E-3540",
+                "department": "Sales",
+                "rule_violated": "Training Completion Certificate Mandatory",
+                "log_entry": "94         3540  12-Mar-20       Area Sales Manager         CCDR         Active    Full-Time  Zone B                  Part-Time              Sales                  Splicing  09-06-1983    CO       Male     White     Widowed            Exceeds                        4  25-06-2023                 2                   2                        3     26-Oct-22    Communication Skills      External       Incomplete                        2         903.46   37",
+                "severity": "Low",
+                "explanation": "Employee ID 3540 has a training outcome of 'Incomplete', which means a completion certificate is not available as per policy.",
+                "recommendation": "Investigate why training was not completed or failed. Implement measures to ensure successful completion or alternative arrangements. Document any exceptions."
+            },
+            {
+                "id": 45,
+                "employee": "E-3542",
+                "department": "Sales",
+                "rule_violated": "Training Completion Certificate Mandatory",
+                "log_entry": "96         3542  15-Apr-23       Area Sales Manager           EW         Active     Contract  Zone A                  Temporary              Sales          Field Operations  01-03-1948    IN       Male     White     Married  Needs Improvement                        1  18-10-2022                 2                   3                        4     22-Aug-22      Project Management      Internal           Failed                        4         511.42   75",
+                "severity": "Low",
+                "explanation": "Employee ID 3542 has a training outcome of 'Failed', which means a completion certificate is not available as per policy.",
+                "recommendation": "Investigate why training was not completed or failed. Implement measures to ensure successful completion or alternative arrangements. Document any exceptions."
+            },
+            {
+                "id": 46,
+                "employee": "E-3545",
+                "department": "IT",
+                "rule_violated": "Training Completion Certificate Mandatory",
+                "log_entry": "99         3545  07-Mar-22       Area Sales Manager           EW         Active    Full-Time  Zone C                  Temporary              IT/IS          Field Operations  28-01-1943    OR     Female     Black     Widowed        Fully Meets                        1  27-05-2023                 2                   5                        2     04-May-23        Customer Service      External       Incomplete                        5         581.12   79",
+                "severity": "Low",
+                "explanation": "Employee ID 3545 has a training outcome of 'Incomplete', which means a completion certificate is not available as per policy.",
+                "recommendation": "Investigate why training was not completed or failed. Implement measures to ensure successful completion or alternative arrangements. Document any exceptions."
+            }
+        ]
+    }
+]
