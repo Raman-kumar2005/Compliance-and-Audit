@@ -92,3 +92,31 @@
     linear-gradient(to bottom, oklch(0.99 0.01 265 / 6%) 1px, transparent 1px);
   background-size: 64px 64px;
 }
+/* Print optimization for PDF export */
+@media print {
+  /* Hide navbar, buttons, and navigation controls during export */
+  nav,
+  button,
+  .no-print {
+    display: none !important;
+  }
+
+  /* Force background colors and SVG graphics to print correctly */
+  body,
+  #report-container {
+    background-color: #ffffff !important;
+    color: #000000 !important;
+    padding: 0 !important;
+    margin: 0 !important;
+    -webkit-print-color-adjust: exact !important;
+    print-color-adjust: exact !important;
+  }
+
+  /* Prevent awkward page breaks inside charts and tables */
+  .grid > div,
+  table,
+  tr {
+    break-inside: avoid;
+    page-break-inside: avoid;
+  }
+}

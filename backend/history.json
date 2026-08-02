@@ -1,5 +1,555 @@
 [
     {
+        "id": "38b7013d-eb32-4f78-a751-31b43454c3da",
+        "timestamp": "2026-08-03T00:10:15.229248",
+        "policy_filename": "Enterprise_HR_Compliance_Policy.pdf",
+        "log_filename": "csv_data.csv",
+        "metrics": {
+            "compliance_score": 57,
+            "risk_distribution": {
+                "Low": 0,
+                "Medium": 12,
+                "High": 12,
+                "Critical": 1
+            },
+            "violations_by_department": {
+                "Finance": 0,
+                "HR": 13,
+                "IT": 3,
+                "Sales": 21,
+                "Ops": 3
+            },
+            "compliance_trend": [
+                50,
+                52,
+                54,
+                56,
+                55,
+                57
+            ]
+        },
+        "violations": [
+            {
+                "id": 1,
+                "employee": "N/A",
+                "department": "Ops",
+                "rule_violated": "Employee Engagement & Survey Audit Standards",
+                "log_entry": "Production department average engagement score: 1.5 (Employee 3427: 1, Employee 3428: 2)",
+                "severity": "Critical",
+                "explanation": "The Production department's average engagement score of 1.5 is below the policy threshold of 2.0, triggering an immediate HR audit.",
+                "recommendation": "Initiate an HR Workload & Culture Audit for the Production department to identify root causes and implement corrective actions."
+            },
+            {
+                "id": 2,
+                "employee": "3429",
+                "department": "Sales",
+                "rule_violated": "Workforce Classification & Pay Zone Governance",
+                "log_entry": "Employee ID 3429: EmployeeType 'Full-Time', EmployeeClassificationType 'Part-Time'",
+                "severity": "High",
+                "explanation": "Employee 3429 is inconsistently classified as both Full-Time and Part-Time, which can lead to incorrect benefit allocation and compliance issues.",
+                "recommendation": "Rectify the employee's classification in the HR system to ensure consistency and proper application of benefits and policies."
+            },
+            {
+                "id": 3,
+                "employee": "3430",
+                "department": "Sales",
+                "rule_violated": "Workforce Classification & Pay Zone Governance",
+                "log_entry": "Employee ID 3430: EmployeeType 'Contract', EmployeeClassificationType 'Full-Time'",
+                "severity": "High",
+                "explanation": "Employee 3430, a contract worker, is incorrectly classified as a Full-Time employee, potentially misrepresenting employment status and benefit eligibility.",
+                "recommendation": "Update the employee's classification to accurately reflect their contract status and ensure adherence to external vendor SLAs."
+            },
+            {
+                "id": 4,
+                "employee": "3433",
+                "department": "Sales",
+                "rule_violated": "Workforce Classification & Pay Zone Governance",
+                "log_entry": "Employee ID 3433: EmployeeType 'Full-Time', EmployeeClassificationType 'Temporary'",
+                "severity": "High",
+                "explanation": "Employee 3433 is classified as Full-Time but also as Temporary, creating an ambiguity in their employment status and associated entitlements.",
+                "recommendation": "Clarify and correct the employee's classification to either Full-Time or Temporary, ensuring proper policy application."
+            },
+            {
+                "id": 5,
+                "employee": "3427",
+                "department": "Ops",
+                "rule_violated": "Training & Professional Development Policy (Completion Requirements)",
+                "log_entry": "Employee ID 3427: Training Outcome 'Failed' for 'Leadership Development' on 15-Jul-23",
+                "severity": "Medium",
+                "explanation": "Employee 3427 failed a training session on 15-Jul-23 and has not retaken it within the mandated 60 calendar days.",
+                "recommendation": "Schedule a mandatory retake of the 'Leadership Development' training for Employee 3427 immediately to ensure compliance."
+            },
+            {
+                "id": 6,
+                "employee": "3428",
+                "department": "Ops",
+                "rule_violated": "Training & Professional Development Policy (Completion Requirements)",
+                "log_entry": "Employee ID 3428: Training Outcome 'Incomplete' for 'Customer Service' on 12-Sep-22",
+                "severity": "Medium",
+                "explanation": "Employee 3428 has an incomplete training from 12-Sep-22 that was not retaken within the 60-day policy window.",
+                "recommendation": "Follow up with Employee 3428 to complete the 'Customer Service' training and ensure all mandatory training requirements are met."
+            },
+            {
+                "id": 7,
+                "employee": "3442",
+                "department": "IT",
+                "rule_violated": "Training & Professional Development Policy (Completion Requirements)",
+                "log_entry": "Employee ID 3442: Training Outcome 'Failed' for 'Project Management' on 06-Mar-23",
+                "severity": "Medium",
+                "explanation": "Employee 3442 failed 'Project Management' training on 06-Mar-23 and has not retaken it within the required 60 days.",
+                "recommendation": "Arrange for Employee 3442 to retake the 'Project Management' training promptly to fulfill compliance obligations."
+            }
+        ]
+    },
+    {
+        "id": "78da90cf-2fbf-4035-8b9d-b24f43dd8604",
+        "timestamp": "2026-08-02T23:33:08.103538",
+        "policy_filename": "Enterprise_HR_Compliance_Policy.pdf",
+        "log_filename": "csv_data.csv",
+        "metrics": {
+            "compliance_score": 60,
+            "risk_distribution": {
+                "Low": 0,
+                "Medium": 0,
+                "High": 8,
+                "Critical": 0
+            },
+            "violations_by_department": {
+                "Finance": 0,
+                "HR": 0,
+                "IT": 1,
+                "Sales": 6,
+                "Ops": 1
+            },
+            "compliance_trend": [
+                65,
+                62,
+                68,
+                63,
+                61,
+                60
+            ]
+        },
+        "violations": [
+            {
+                "id": 3428,
+                "employee": "3428",
+                "department": "Ops",
+                "rule_violated": "Policy 4: Training Completion Requirements (Incomplete Training)",
+                "log_entry": "Employee ID: 3428, EmployeeType: Contract, Training Date: 12-Sep-22, Training Program Name: Customer Service, Training Outcome: Incomplete",
+                "severity": "High",
+                "explanation": "Contract employee 3428 failed to retake or complete required Customer Service training within 60 days of the initial incomplete status.",
+                "recommendation": "Mandate immediate retake of Customer Service training and review contract adherence for compliance protocols."
+            },
+            {
+                "id": 3429,
+                "employee": "3429",
+                "department": "Sales",
+                "rule_violated": "Policy 4: Training Completion Requirements (Failed Training)",
+                "log_entry": "Employee ID: 3429, EmployeeType: Full-Time, Training Date: 13-Aug-22, Training Program Name: Leadership Development, Training Outcome: Failed",
+                "severity": "High",
+                "explanation": "Full-time employee 3429 failed to retake Leadership Development training within the required 60-day period.",
+                "recommendation": "Schedule immediate retake of Leadership Development training and investigate reasons for non-compliance."
+            },
+            {
+                "id": 3436,
+                "employee": "3436",
+                "department": "Sales",
+                "rule_violated": "Policy 4: Training Completion Requirements (Failed Training)",
+                "log_entry": "Employee ID: 3436, EmployeeType: Part-Time, Training Date: 09-Apr-23, Training Program Name: Leadership Development, Training Outcome: Failed",
+                "severity": "High",
+                "explanation": "Part-time employee 3436 failed to retake Leadership Development training within the required 60-day period.",
+                "recommendation": "Schedule immediate retake of Leadership Development training and investigate reasons for non-compliance."
+            },
+            {
+                "id": 3437,
+                "employee": "3437",
+                "department": "Sales",
+                "rule_violated": "Policy 4: Training Completion Requirements (Failed Training)",
+                "log_entry": "Employee ID: 3437, EmployeeType: Contract, Training Date: 20-Oct-22, Training Program Name: Technical Skills, Training Outcome: Failed",
+                "severity": "High",
+                "explanation": "Contract employee 3437 failed to retake Technical Skills training within the required 60-day period.",
+                "recommendation": "Mandate immediate retake of Technical Skills training and review contract adherence for compliance protocols."
+            },
+            {
+                "id": 3438,
+                "employee": "3438",
+                "department": "Sales",
+                "rule_violated": "Policy 4: Training Completion Requirements (Failed Training)",
+                "log_entry": "Employee ID: 3438, EmployeeType: Full-Time, Training Date: 05-Oct-22, Training Program Name: Technical Skills, Training Outcome: Failed",
+                "severity": "High",
+                "explanation": "Full-time employee 3438 failed to retake Technical Skills training within the required 60-day period.",
+                "recommendation": "Schedule immediate retake of Technical Skills training and investigate reasons for non-compliance."
+            },
+            {
+                "id": 3439,
+                "employee": "3439",
+                "department": "Sales",
+                "rule_violated": "Policy 4: Training Completion Requirements (Incomplete Training)",
+                "log_entry": "Employee ID: 3439, EmployeeType: Full-Time, Training Date: 09-Mar-23, Training Program Name: Technical Skills, Training Outcome: Incomplete",
+                "severity": "High",
+                "explanation": "Full-time employee 3439 failed to complete or retake Technical Skills training within the required 60-day period.",
+                "recommendation": "Schedule immediate completion or retake of Technical Skills training and investigate reasons for non-compliance."
+            },
+            {
+                "id": 3440,
+                "employee": "3440",
+                "department": "Sales",
+                "rule_violated": "Policy 4: Training Completion Requirements (Failed Training)",
+                "log_entry": "Employee ID: 3440, EmployeeType: Contract, Training Date: 29-May-23, Training Program Name: Communication Skills, Training Outcome: Failed",
+                "severity": "High",
+                "explanation": "Contract employee 3440 failed to retake Communication Skills training within the required 60-day period.",
+                "recommendation": "Mandate immediate retake of Communication Skills training and review contract adherence for compliance protocols."
+            },
+            {
+                "id": 3442,
+                "employee": "3442",
+                "department": "IT",
+                "rule_violated": "Policy 4: Training Completion Requirements (Failed Training)",
+                "log_entry": "Employee ID: 3442, EmployeeType: Full-Time, DepartmentType: IT/IS, Training Date: 06-Mar-23, Training Program Name: Project Management, Training Outcome: Failed",
+                "severity": "High",
+                "explanation": "Full-time employee 3442 failed to retake Project Management training within the required 60-day period.",
+                "recommendation": "Schedule immediate retake of Project Management training and investigate reasons for non-compliance."
+            }
+        ]
+    },
+    {
+        "id": "2f946718-79d1-4b5e-a8a2-6160fbcc6d70",
+        "timestamp": "2026-08-02T23:12:43.433896",
+        "policy_filename": "Enterprise_HR_Compliance_Policy.pdf",
+        "log_filename": "csv_data.csv",
+        "metrics": {
+            "compliance_score": 66,
+            "risk_distribution": {
+                "Low": 0,
+                "Medium": 12,
+                "High": 1,
+                "Critical": 0
+            },
+            "violations_by_department": {
+                "Finance": 0,
+                "HR": 0,
+                "IT": 2,
+                "Sales": 9,
+                "Ops": 2
+            },
+            "compliance_trend": [
+                60,
+                62,
+                64,
+                63,
+                65,
+                66
+            ]
+        },
+        "violations": [
+            {
+                "id": 3429,
+                "employee": "3429",
+                "department": "Sales",
+                "rule_violated": "Workforce Classification Mismatch",
+                "log_entry": "Employee ID 3429, EmployeeType: Full-Time, EmployeeClassificationType: Part-Time",
+                "severity": "High",
+                "explanation": "A full-time employee is incorrectly classified as part-time, potentially impacting benefits and compliance.",
+                "recommendation": "Update employee classification to accurately reflect full-time status in HR systems."
+            },
+            {
+                "id": 3428,
+                "employee": "3428",
+                "department": "Ops",
+                "rule_violated": "Incomplete Training Not Retaken",
+                "log_entry": "Employee ID 3428, Training Date: 12-Sep-22, Training Program Name: Customer Service, Training Outcome: Incomplete",
+                "severity": "Medium",
+                "explanation": "Training marked as incomplete on 12-Sep-22 was not retaken within the required 60 calendar days.",
+                "recommendation": "Mandate immediate retake of the Customer Service training and verify completion."
+            },
+            {
+                "id": 3429,
+                "employee": "3429",
+                "department": "Sales",
+                "rule_violated": "Failed Training Not Retaken",
+                "log_entry": "Employee ID 3429, Training Date: 13-Aug-22, Training Program Name: Leadership Development, Training Outcome: Failed",
+                "severity": "Medium",
+                "explanation": "Training marked as failed on 13-Aug-22 was not retaken within the required 60 calendar days.",
+                "recommendation": "Schedule a mandatory retake for Leadership Development training and monitor progress."
+            },
+            {
+                "id": 3444,
+                "employee": "3444",
+                "department": "Sales",
+                "rule_violated": "Failed Training Not Retaken",
+                "log_entry": "Employee ID 3444, Training Date: 02-Nov-22, Training Program Name: Technical Skills, Training Outcome: Failed",
+                "severity": "Medium",
+                "explanation": "Training marked as failed on 02-Nov-22 was not retaken within the required 60 calendar days.",
+                "recommendation": "Ensure employee 3444 retakes the Technical Skills training promptly."
+            },
+            {
+                "id": 3442,
+                "employee": "3442",
+                "department": "IT",
+                "rule_violated": "Failed Training Not Retaken",
+                "log_entry": "Employee ID 3442, Training Date: 06-Mar-23, Training Program Name: Project Management, Training Outcome: Failed",
+                "severity": "Medium",
+                "explanation": "Training marked as failed on 06-Mar-23 was not retaken within the required 60 calendar days.",
+                "recommendation": "Follow up with employee 3442 to complete the Project Management training."
+            },
+            {
+                "id": 3427,
+                "employee": "3427",
+                "department": "Ops",
+                "rule_violated": "Failed Training Not Retaken",
+                "log_entry": "Employee ID 3427, Training Date: 15-Jul-23, Training Program Name: Leadership Development, Training Outcome: Failed",
+                "severity": "Medium",
+                "explanation": "Training marked as failed on 15-Jul-23 was not retaken within the required 60 calendar days.",
+                "recommendation": "Arrange for employee 3427 to retake the Leadership Development training immediately."
+            },
+            {
+                "id": 3439,
+                "employee": "3439",
+                "department": "Sales",
+                "rule_violated": "Incomplete Training Not Retaken",
+                "log_entry": "Employee ID 3439, Training Date: 09-Mar-23, Training Program Name: Technical Skills, Training Outcome: Incomplete",
+                "severity": "Medium",
+                "explanation": "Training marked as incomplete on 09-Mar-23 was not retaken within the required 60 calendar days.",
+                "recommendation": "Ensure employee 3439 completes the Technical Skills training without further delay."
+            },
+            {
+                "id": 3436,
+                "employee": "3436",
+                "department": "Sales",
+                "rule_violated": "Failed Training Not Retaken",
+                "log_entry": "Employee ID 3436, Training Date: 09-Apr-23, Training Program Name: Leadership Development, Training Outcome: Failed",
+                "severity": "Medium",
+                "explanation": "Training marked as failed on 09-Apr-23 was not retaken within the required 60 calendar days.",
+                "recommendation": "Schedule a retake for Leadership Development training for employee 3436."
+            }
+        ]
+    },
+    {
+        "id": "bf52f0de-3e94-4eb3-85ba-89f001a09059",
+        "timestamp": "2026-08-02T23:10:46.922284",
+        "policy_filename": "Enterprise_HR_Compliance_Policy.pdf",
+        "log_filename": "csv_data.csv",
+        "metrics": {
+            "compliance_score": 54,
+            "risk_distribution": {
+                "Low": 0,
+                "Medium": 23,
+                "High": 0,
+                "Critical": 0
+            },
+            "violations_by_department": {
+                "Finance": 0,
+                "HR": 0,
+                "IT": 3,
+                "Sales": 18,
+                "Ops": 2
+            },
+            "compliance_trend": [
+                48,
+                50,
+                52,
+                51,
+                53,
+                54
+            ]
+        },
+        "violations": [
+            {
+                "id": 3428,
+                "employee": "3428",
+                "department": "Ops",
+                "rule_violated": "Workforce Classification Mismatch",
+                "log_entry": "Employee ID 3428: EmployeeType 'Contract', EmployeeClassificationType 'Part-Time'",
+                "severity": "Medium",
+                "explanation": "Employee's classification type does not match their employment type, indicating an HR record discrepancy.",
+                "recommendation": "Review and correct employee classification records to ensure consistency with employment type."
+            },
+            {
+                "id": 3428,
+                "employee": "3428",
+                "department": "Ops",
+                "rule_violated": "Overdue Training Completion",
+                "log_entry": "Employee ID 3428: Training Outcome 'Incomplete' for 'Customer Service' on 12-Sep-22",
+                "severity": "Medium",
+                "explanation": "Employee 3428 failed to complete required training within the 60-day policy window.",
+                "recommendation": "Schedule immediate retraining for the employee and track completion to ensure compliance."
+            },
+            {
+                "id": 3429,
+                "employee": "3429",
+                "department": "Sales",
+                "rule_violated": "Workforce Classification Mismatch",
+                "log_entry": "Employee ID 3429: EmployeeType 'Full-Time', EmployeeClassificationType 'Part-Time'",
+                "severity": "Medium",
+                "explanation": "Employee's classification type does not match their employment type, indicating an HR record discrepancy.",
+                "recommendation": "Review and correct employee classification records to ensure consistency with employment type."
+            },
+            {
+                "id": 3429,
+                "employee": "3429",
+                "department": "Sales",
+                "rule_violated": "Overdue Training Completion",
+                "log_entry": "Employee ID 3429: Training Outcome 'Failed' for 'Leadership Development' on 13-Aug-22",
+                "severity": "Medium",
+                "explanation": "Employee 3429 failed to complete required training within the 60-day policy window.",
+                "recommendation": "Schedule immediate retraining for the employee and track completion to ensure compliance."
+            },
+            {
+                "id": 3430,
+                "employee": "3430",
+                "department": "Sales",
+                "rule_violated": "Workforce Classification Mismatch",
+                "log_entry": "Employee ID 3430: EmployeeType 'Contract', EmployeeClassificationType 'Full-Time'",
+                "severity": "Medium",
+                "explanation": "Employee's classification type does not match their employment type, indicating an HR record discrepancy.",
+                "recommendation": "Review and correct employee classification records to ensure consistency with employment type."
+            },
+            {
+                "id": 3436,
+                "employee": "3436",
+                "department": "Sales",
+                "rule_violated": "Overdue Training Completion",
+                "log_entry": "Employee ID 3436: Training Outcome 'Failed' for 'Leadership Development' on 09-Apr-23",
+                "severity": "Medium",
+                "explanation": "Employee 3436 failed to complete required training within the 60-day policy window.",
+                "recommendation": "Schedule immediate retraining for the employee and track completion to ensure compliance."
+            },
+            {
+                "id": 3443,
+                "employee": "3443",
+                "department": "IT",
+                "rule_violated": "Workforce Classification Mismatch",
+                "log_entry": "Employee ID 3443: EmployeeType 'Full-Time', EmployeeClassificationType 'Part-Time'",
+                "severity": "Medium",
+                "explanation": "Employee's classification type does not match their employment type, indicating an HR record discrepancy.",
+                "recommendation": "Review and correct employee classification records to ensure consistency with employment type."
+            },
+            {
+                "id": 3443,
+                "employee": "3443",
+                "department": "IT",
+                "rule_violated": "Overdue Training Completion",
+                "log_entry": "Employee ID 3443: Training Outcome 'Failed' for 'Technical Skills' on 18-Feb-23",
+                "severity": "Medium",
+                "explanation": "Employee 3443 failed to complete required training within the 60-day policy window.",
+                "recommendation": "Schedule immediate retraining for the employee and track completion to ensure compliance."
+            }
+        ]
+    },
+    {
+        "id": "e50e6572-e687-403c-a1e2-ae0bde757efe",
+        "timestamp": "2026-08-02T23:10:04.262646",
+        "policy_filename": "Enterprise_HR_Compliance_Policy.pdf",
+        "log_filename": "csv_data.csv",
+        "metrics": {
+            "compliance_score": 39,
+            "risk_distribution": {
+                "Low": 0,
+                "Medium": 18,
+                "High": 17,
+                "Critical": 0
+            },
+            "violations_by_department": {
+                "Finance": 0,
+                "HR": 7,
+                "IT": 3,
+                "Sales": 21,
+                "Ops": 4
+            },
+            "compliance_trend": [
+                35,
+                36,
+                37,
+                38,
+                38,
+                39
+            ]
+        },
+        "violations": [
+            {
+                "id": 3429,
+                "employee": "E-3429",
+                "department": "Sales",
+                "rule_violated": "Policy 2. Workforce Classification Mismatch; Policy 4. Training Completion; Policy 5. Low Engagement Score",
+                "log_entry": "EmployeeType: Full-Time, EmployeeClassificationType: Part-Time, Training Outcome: Failed, Training Date: 13-Aug-22, Engagement Score: 1, Work-Life Balance Score: 1",
+                "severity": "High",
+                "explanation": "A full-time employee is incorrectly classified as part-time, failed mandatory training was not retaken within 60 days, and engagement/work-life balance scores are below the audit threshold.",
+                "recommendation": "Correct employee classification, ensure immediate retraining, and initiate an HR Workload & Culture Audit for the Sales department."
+            },
+            {
+                "id": 3430,
+                "employee": "E-3430",
+                "department": "Sales",
+                "rule_violated": "Policy 2. Workforce Classification Mismatch",
+                "log_entry": "EmployeeType: Contract, EmployeeClassificationType: Full-Time",
+                "severity": "High",
+                "explanation": "A contract employee is incorrectly classified as a full-time employee, potentially leading to benefit discrepancies and compliance issues.",
+                "recommendation": "Review and correct the employee's classification to align with their contractual status and ensure proper benefit allocation."
+            },
+            {
+                "id": 3433,
+                "employee": "E-3433",
+                "department": "Sales",
+                "rule_violated": "Policy 2. Workforce Classification Mismatch; Policy 5. Low Engagement Score",
+                "log_entry": "EmployeeType: Full-Time, EmployeeClassificationType: Temporary, Engagement Score: 1",
+                "severity": "High",
+                "explanation": "A full-time employee is incorrectly classified as temporary, and their engagement score is below the threshold, triggering an HR audit.",
+                "recommendation": "Rectify the employee's classification immediately and initiate an HR Workload & Culture Audit for the Sales department."
+            },
+            {
+                "id": 3428,
+                "employee": "E-3428",
+                "department": "Ops",
+                "rule_violated": "Policy 2. Workforce Classification Mismatch; Policy 4. Training Completion; Policy 5. Low Engagement Score",
+                "log_entry": "EmployeeType: Contract, EmployeeClassificationType: Part-Time, Training Outcome: Incomplete, Training Date: 12-Sep-22, Satisfaction Score: 1",
+                "severity": "High",
+                "explanation": "A contract employee is misclassified as part-time, mandatory training was not completed within 60 days, and the satisfaction score is below the audit threshold.",
+                "recommendation": "Correct employee classification, schedule immediate retraining, and trigger an HR Workload & Culture Audit for the Production department."
+            },
+            {
+                "id": 3427,
+                "employee": "E-3427",
+                "department": "Ops",
+                "rule_violated": "Policy 2. Workforce Classification Mismatch; Policy 4. Training Completion; Policy 5. Low Engagement Score",
+                "log_entry": "EmployeeType: Contract, EmployeeClassificationType: Temporary, Training Outcome: Failed, Training Date: 15-Jul-23, Engagement Score: 1",
+                "severity": "High",
+                "explanation": "A contract employee is misclassified as temporary, failed mandatory training was not retaken within 60 days, and the engagement score is below the audit threshold.",
+                "recommendation": "Update employee classification, ensure prompt retraining, and initiate an HR Workload & Culture Audit for the Production department."
+            },
+            {
+                "id": 3438,
+                "employee": "E-3438",
+                "department": "Sales",
+                "rule_violated": "Policy 2. Workforce Classification Mismatch; Policy 4. Training Completion",
+                "log_entry": "EmployeeType: Full-Time, EmployeeClassificationType: Temporary, Training Outcome: Failed, Training Date: 05-Oct-22",
+                "severity": "High",
+                "explanation": "A full-time employee is incorrectly classified as temporary, and failed mandatory training was not retaken within 60 days.",
+                "recommendation": "Correct the employee's classification and ensure the required training is completed immediately."
+            },
+            {
+                "id": 3440,
+                "employee": "E-3440",
+                "department": "Sales",
+                "rule_violated": "Policy 2. Workforce Classification Mismatch; Policy 4. Training Completion; Policy 5. Low Engagement Score",
+                "log_entry": "EmployeeType: Contract, EmployeeClassificationType: Full-Time, Training Outcome: Failed, Training Date: 29-May-23, Engagement Score: 1",
+                "severity": "High",
+                "explanation": "A contract employee is misclassified as full-time, failed mandatory training was not retaken within 60 days, and the engagement score is below the audit threshold.",
+                "recommendation": "Rectify employee classification, ensure immediate retraining, and trigger an HR Workload & Culture Audit for the Sales department."
+            },
+            {
+                "id": 3442,
+                "employee": "E-3442",
+                "department": "IT",
+                "rule_violated": "Policy 4. Training Completion Requirements",
+                "log_entry": "Training Outcome: Failed, Training Date: 06-Mar-23",
+                "severity": "Medium",
+                "explanation": "An employee failed mandatory training, and it was not retaken within the required 60 calendar days.",
+                "recommendation": "Mandate immediate retraining for the employee and implement a system to track and enforce training completion deadlines."
+            }
+        ]
+    },
+    {
         "id": "021402c0-621c-4a4b-ab77-b28142926f18",
         "timestamp": "2026-08-02T16:20:44.856952",
         "policy_filename": "sample_policy.txt",

@@ -2,12 +2,13 @@ import os
 import json
 import io
 import uuid
+import hashlib
 from datetime import datetime
 import pandas as pd
 from pathlib import Path
 from dotenv import load_dotenv
 from pypdf import PdfReader
-from fastapi import FastAPI, UploadFile, File, HTTPException, status
+from fastapi import FastAPI, UploadFile, File, HTTPException, status, Query
 from fastapi.middleware.cors import CORSMiddleware
 from google import genai
 from google.genai import types
@@ -45,20 +46,67 @@ def get_history():
 
 def save_to_history(record):
     history = get_history()
-    history.insert(0, record) # Prepend so newest is first
+    history.insert(0, record)  # Prepend so newest is first
     with open(HISTORY_FILE, "w") as f:
         json.dump(history, f, indent=4)
+
 # --- STRICT PYDANTIC SCHEMAS FOR GEMINI STRUCTURED OUTPUT ---
+class RiskDistribution(BaseModel):
+    Low: int = Field(default=0)
+    Medium: int = Field(default=0)
+    High: int = Field(default=0)
+    Critical: int = Field(default=0)
+
+class DepartmentViolations(BaseModel):
+    Finance: int = Field(default=0)
+    HR: int = Field(default=0)
+    IT: int = Field(default=0)
+    Sales: int = Field(default=0)
+    Ops: int = Field(default=0)
+
+class Metrics(BaseModel):
+    compliance_score: int
+    risk_distribution: RiskDistribution
+    violations_by_department: DepartmentViolations
+    compliance_trend: list[int]
+
 class Violation(BaseModel):
     id: int
+    employee: str = Field(default="Unknown", description="Employee identifier or username")
+    department: str = Field(default="Unknown", description="Inferred or explicitly stated department")
     rule_violated: str = Field(description="Summary of policy rule violated")
     log_entry: str = Field(description="Exact log entry evidence")
-    severity: str = Field(description="Must be HIGH, MEDIUM, or LOW")
+    severity: str = Field(description="Must be Critical, High, Medium, or Low")
     explanation: str = Field(description="Concise 1-sentence explanation")
     recommendation: str = Field(description="Concise 1-sentence mitigation recommendation")
 
 class AuditResponse(BaseModel):
+    metrics: Metrics
     violations: list[Violation]
+
+
+# --- PYDANTIC SCHEMAS FOR COMPARISON ENDPOINT ---
+class ComparisonSummary(BaseModel):
+    score_difference: int
+    previous_score: int
+    current_score: int
+    overall_risk_change: str  # "IMPROVED", "REGRESSED", or "UNCHANGED"
+    risk_trend_confidence: str
+    new_violations_count: int
+    resolved_violations_count: int
+    unchanged_violations_count: int
+    new_violations: list[dict]
+    resolved_violations: list[dict]
+    unchanged_violations: list[dict]
+    severity_breakdown_difference: dict[str, int]
+    department_breakdown_difference: dict[str, int]
+    comparison_summary: str
+
+
+def make_violation_fingerprint(v: dict) -> str:
+    """Generates a stable fingerprint for a violation using rule + log entry."""
+    raw_key = f"{v.get('rule_violated', '')}:{v.get('log_entry', '')}"
+    return hashlib.md5(raw_key.encode('utf-8')).hexdigest()
 
 
 def send_violation_alert(rule, severity, log_evidence):
@@ -96,14 +144,12 @@ def extract_text_from_file(file: UploadFile) -> str:
         
     elif filename.endswith(".csv"):
         df = pd.read_csv(io.BytesIO(content))
-        # Strictly truncate CSV to top 30 rows
         if len(df) > 30:
             df = df.head(30)
         return df.to_string()
         
     elif filename.endswith((".txt", ".json", ".log")):
         text = content.decode("utf-8", errors="ignore").strip()
-        # Truncate text logs to 8,000 chars max
         return text[:8000]
         
     else:
@@ -112,6 +158,8 @@ def extract_text_from_file(file: UploadFile) -> str:
             detail=f"Unsupported file format: {file.filename}"
         )
 
+# --- BASE ENDPOINTS ---
+
 @app.get("/")
 def read_root():
     return {"status": "online", "message": "Compliance Auditor AI API is active!"}
@@ -119,6 +167,128 @@ def read_root():
 @app.get("/api/history")
 def get_audit_history():
     return get_history()
+
+# --- AUDIT COMPARISON ENDPOINTS ---
+
+@app.get("/api/audits")
+def list_audits():
+    """Retrieve list of all historical audit scans."""
+    history = get_history()
+    return [
+        {
+            "id": item.get("id"),
+            "timestamp": item.get("timestamp"),
+            "policy_filename": item.get("policy_filename"),
+            "log_filename": item.get("log_filename"),
+            "compliance_score": item.get("metrics", {}).get("compliance_score", 0),
+            "total_violations": len(item.get("violations", []))
+        }
+        for item in history
+    ]
+
+# IMPORTANT: /api/audits/compare MUST be declared BEFORE /api/audits/{audit_id}
+@app.get("/api/audits/compare", response_model=ComparisonSummary)
+def compare_audits(
+    prev_id: str = Query(..., description="ID of previous audit scan"),
+    curr_id: str = Query(..., description="ID of current audit scan")
+):
+    """Compares two saved audits and returns delta metrics."""
+    history = get_history()
+    
+    prev_audit = next((item for item in history if item.get("id") == prev_id), None)
+    curr_audit = next((item for item in history if item.get("id") == curr_id), None)
+
+    if not prev_audit or not curr_audit:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="One or both audit IDs were not found in history."
+        )
+
+    # 1. Scores & Risk Delta
+    prev_score = prev_audit.get("metrics", {}).get("compliance_score", 0)
+    curr_score = curr_audit.get("metrics", {}).get("compliance_score", 0)
+    score_diff = curr_score - prev_score
+
+    if score_diff > 0:
+        overall_risk_change = "IMPROVED"
+    elif score_diff < 0:
+        overall_risk_change = "REGRESSED"
+    else:
+        overall_risk_change = "UNCHANGED"
+
+    # 2. Violation Matching using Stable Fingerprints
+    prev_violations = {make_violation_fingerprint(v): v for v in prev_audit.get("violations", [])}
+    curr_violations = {make_violation_fingerprint(v): v for v in curr_audit.get("violations", [])}
+
+    prev_keys = set(prev_violations.keys())
+    curr_keys = set(curr_violations.keys())
+
+    new_keys = curr_keys - prev_keys
+    resolved_keys = prev_keys - curr_keys
+    unchanged_keys = curr_keys & prev_keys
+
+    new_violations = [curr_violations[k] for k in new_keys]
+    resolved_violations = [prev_violations[k] for k in resolved_keys]
+    unchanged_violations = [curr_violations[k] for k in unchanged_keys]
+
+    # 3. Severity Breakdown Difference
+    prev_sev = prev_audit.get("metrics", {}).get("risk_distribution", {})
+    curr_sev = curr_audit.get("metrics", {}).get("risk_distribution", {})
+    
+    sev_keys = set(list(prev_sev.keys()) + list(curr_sev.keys()))
+    sev_diff = {
+        k: curr_sev.get(k, 0) - prev_sev.get(k, 0) for k in sev_keys
+    }
+
+    # 4. Department Breakdown Difference
+    prev_dept = prev_audit.get("metrics", {}).get("violations_by_department", {})
+    curr_dept = curr_audit.get("metrics", {}).get("violations_by_department", {})
+
+    dept_keys = set(list(prev_dept.keys()) + list(curr_dept.keys()))
+    dept_diff = {
+        k: curr_dept.get(k, 0) - prev_dept.get(k, 0) for k in dept_keys
+    }
+
+    # 5. Natural Language Summary Generation
+    summary_parts = []
+    if score_diff > 0:
+        summary_parts.append(f"Compliance score improved by {score_diff} points (from {prev_score} to {curr_score}).")
+    elif score_diff < 0:
+        summary_parts.append(f"Compliance score dropped by {abs(score_diff)} points (from {prev_score} to {curr_score}).")
+    else:
+        summary_parts.append(f"Compliance score remained unchanged at {curr_score}.")
+
+    summary_parts.append(f"Identified {len(new_violations)} new violation(s) and resolved {len(resolved_violations)} previous violation(s).")
+
+    if len(new_violations) > 0:
+        top_new_rule = new_violations[0].get("rule_violated", "Unknown Rule")
+        summary_parts.append(f"Primary new issue detected: '{top_new_rule}'.")
+
+    return {
+        "score_difference": score_diff,
+        "previous_score": prev_score,
+        "current_score": curr_score,
+        "overall_risk_change": overall_risk_change,
+        "risk_trend_confidence": "HIGH (Fingerprint Match)",
+        "new_violations_count": len(new_violations),
+        "resolved_violations_count": len(resolved_violations),
+        "unchanged_violations_count": len(unchanged_violations),
+        "new_violations": new_violations,
+        "resolved_violations": resolved_violations,
+        "unchanged_violations": unchanged_violations,
+        "severity_breakdown_difference": sev_diff,
+        "department_breakdown_difference": dept_diff,
+        "comparison_summary": " ".join(summary_parts)
+    }
+
+@app.get("/api/audits/{audit_id}")
+def get_audit_by_id(audit_id: str):
+    """Retrieve a single audit record by its ID."""
+    history = get_history()
+    for item in history:
+        if item.get("id") == audit_id:
+            return item
+    raise HTTPException(status_code=404, detail="Audit record not found")
 
 @app.post("/api/audit")
 def execute_audit(
@@ -151,71 +321,26 @@ COMPANY POLICY:
 SYSTEM LOGS:
 {log_text}
 
-        Analyze the violations to calculate metrics for a dashboard:
-        1. Calculate an overall compliance score (0-100) where 100 is perfect compliance.
-        2. Count the violations by severity ("Low", "Medium", "High", "Critical").
-        3. Count the violations by inferred department ("Finance", "HR", "IT", "Sales", "Ops"). If department isn't explicit in the logs, infer it from the action or assign it proportionally.
-        4. Generate a plausible 6-week compliance score trend array (6 integers) ending with the current compliance score.
-        
-        For each violation, extract or infer the 'employee' (e.g., E-1042 or username) and 'department'.
+Analyze the violations to calculate metrics for a dashboard:
+1. Calculate an overall compliance score (0-100) where 100 is perfect compliance.
+2. Count the violations by severity ("Low", "Medium", "High", "Critical").
+3. Count the violations by inferred department ("Finance", "HR", "IT", "Sales", "Ops"). If department isn't explicit in the logs, infer it from the action or assign it proportionally.
+4. Generate a plausible 6-week compliance score trend array (6 integers) ending with the current compliance score.
 
-        Return your response ONLY as valid JSON (no markdown block formatting, no extra text) with this structure:
-        {{
-            "metrics": {{
-                "compliance_score": 84,
-                "risk_distribution": {{ "Low": 2, "Medium": 1, "High": 0, "Critical": 0 }},
-                "violations_by_department": {{ "Finance": 1, "HR": 0, "IT": 2, "Sales": 0, "Ops": 0 }},
-                "compliance_trend": [71, 74, 76, 79, 81, 84]
-            }},
-            "violations": [
-                {{
-                    "id": 1,
-                    "employee": "charlie",
-                    "department": "IT",
-                    "rule_violated": "Name/Summary of policy rule",
-                    "log_entry": "Exact log line or evidence snippet",
-                    "severity": "Critical",
-                    "explanation": "Detailed explanation of why this violates policy",
-                    "recommendation": "Actionable steps to resolve or mitigate"
-                }}
-            ]
-        }}
-        """
+For each violation, extract or infer the 'employee' (e.g., E-1042 or username) and 'department'.
+
 INSTRUCTIONS:
 - Identify NO MORE THAN 5-8 most critical violations to prevent token overflow.
 - Keep explanation and recommendation brief (1 short sentence each).
 """
 
-        # 3. Call Gemini API using strict Pydantic response_schema
+        # 3. Call Gemini API with strict structured schema output
         response = client.models.generate_content(
             model='gemini-2.5-flash',
             contents=prompt,
-            config=genai.types.GenerateContentConfig(
-                response_mime_type="application/json",
-            )
-        )
-        
-        cleaned_text = response.text.replace("```json", "").replace("```", "").strip()
-        audit_result = json.loads(cleaned_text)
-        
-        # Add metadata and save to history
-        record_id = str(uuid.uuid4())
-        timestamp = datetime.now().isoformat()
-        
-        audit_record = {
-            "id": record_id,
-            "timestamp": timestamp,
-            "policy_filename": policy_file.filename,
-            "log_filename": log_file.filename,
-            "metrics": audit_result.get("metrics", {}),
-            "violations": audit_result.get("violations", [])
-        }
-        
-        save_to_history(audit_record)
-        return audit_record
             config=types.GenerateContentConfig(
                 response_mime_type="application/json",
-                response_schema=AuditResponse,  # <--- Forces schema matching
+                response_schema=AuditResponse,
                 temperature=0.1
             )
         )
@@ -227,22 +352,37 @@ INSTRUCTIONS:
         if not clean_text:
             raise HTTPException(
                 status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-                detail="Gemini returned an empty response. Try uploading a smaller or simpler file."
+                detail="Gemini returned an empty response. Try uploading a smaller file."
             )
 
-        audit_results = json.loads(clean_text)
+        audit_result = json.loads(clean_text)
 
-        # 5. Email Alert Trigger Logic
-        violations = audit_results.get("violations", [])
+        # 5. Email Alert Trigger Logic for High/Critical Violations
+        violations = audit_result.get("violations", [])
         for violation in violations:
-            if str(violation.get("severity", "")).upper() == "HIGH":
+            sev = str(violation.get("severity", "")).upper()
+            if sev in ["HIGH", "CRITICAL"]:
                 send_violation_alert(
                     rule=violation.get("rule_violated", "Unknown Rule"),
-                    severity="HIGH",
+                    severity=sev,
                     log_evidence=violation.get("log_entry", "See Dashboard for details")
                 )
 
-        return audit_results
+        # 6. Save audit record with metadata to history
+        record_id = str(uuid.uuid4())
+        timestamp = datetime.now().isoformat()
+        
+        audit_record = {
+            "id": record_id,
+            "timestamp": timestamp,
+            "policy_filename": policy_file.filename,
+            "log_filename": log_file.filename,
+            "metrics": audit_result.get("metrics", {}),
+            "violations": violations
+        }
+        
+        save_to_history(audit_record)
+        return audit_record
 
     except json.JSONDecodeError:
         raise HTTPException(
