@@ -162,7 +162,30 @@ export default function App() {
     week: `W${idx + 1}`,
     score: val
   })) : [];
+import React, { useState } from 'react';
+import LandingPage from './components/LandingPage'
+import Login from './Login';
+import Dashboard from './Dashboard';
 
+export default function App() {
+  const [currentView, setCurrentView] = useState('landing'); // 'landing' | 'login' | 'dashboard'
+
+  // 1. Authenticated Dashboard View
+  if (currentView === 'dashboard') {
+    return <Dashboard onLogout={() => setCurrentView('landing')} />;
+  }
+
+  // 2. Login Screen View
+  if (currentView === 'login') {
+    return (
+      <Login 
+        onLogin={() => setCurrentView('dashboard')} 
+        onBack={() => setCurrentView('landing')} 
+      />
+    );
+  }
+
+  // 3. Default Public Landing Page View
   return (
     <div className="min-h-screen bg-[#0f172a] text-slate-100 font-sans selection:bg-indigo-500/30 flex flex-col">
       
@@ -530,5 +553,9 @@ export default function App() {
         
       </div>
     </div>
+    <LandingPage 
+      onGetStarted={() => setCurrentView('login')} 
+      onSignIn={() => setCurrentView('login')} 
+    />
   );
 }
