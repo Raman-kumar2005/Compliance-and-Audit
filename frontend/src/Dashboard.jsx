@@ -54,7 +54,7 @@ export default function Dashboard({ onLogout }) {
   const [searchQuery, setSearchQuery] = useState('');
   const [showAllViolations, setShowAllViolations] = useState(false);
 
-  const BACKEND_URL = 'http://localhost:8000/api';
+  const BACKEND_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000/api';
 
   useEffect(() => {
     if (activeTab === 'history') {
