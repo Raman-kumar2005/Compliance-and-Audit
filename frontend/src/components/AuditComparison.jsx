@@ -15,7 +15,7 @@ export default function AuditComparison() {
   const [expandedSection, setExpandedSection] = useState('new'); // 'new' | 'resolved'
   const [error, setError] = useState('');
 
-  const BACKEND_URL = 'http://localhost:8000/api';
+  const BACKEND_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000/api';
 
   useEffect(() => {
     fetchAuditList();

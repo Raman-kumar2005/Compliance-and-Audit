@@ -79,6 +79,12 @@ class Violation(BaseModel):
     severity: str = Field(description="Must be Critical, High, Medium, or Low")
     explanation: str = Field(description="Concise 1-sentence explanation")
     recommendation: str = Field(description="Concise 1-sentence mitigation recommendation")
+    status: str = Field(default="OPEN", description="Must be OPEN, IN_PROGRESS, MITIGATED, or FALSE_POSITIVE")
+    mitigation_notes: str = Field(default="", description="Auditor mitigation notes")
+
+class ViolationUpdate(BaseModel):
+    status: str = Field(..., description="Must be OPEN, IN_PROGRESS, MITIGATED, or FALSE_POSITIVE")
+    mitigation_notes: str = Field(None, description="Optional auditor mitigation notes")
 
 class AuditResponse(BaseModel):
     metrics: Metrics
@@ -171,20 +177,49 @@ def get_audit_history():
 # --- AUDIT COMPARISON ENDPOINTS ---
 
 @app.get("/api/audits")
-def list_audits():
-    """Retrieve list of all historical audit scans."""
+def list_audits(
+    min_score: int = Query(None, description="Filter audits by minimum compliance score"),
+    search: str = Query(None, description="Search term matching policy or log filename"),
+    sort_by: str = Query("timestamp_desc", description="Sort parameter (timestamp_desc, timestamp_asc, score_desc, score_asc)")
+):
+    """Retrieve list of all historical audit scans with optional filtering and sorting."""
     history = get_history()
-    return [
-        {
+    results = []
+    for item in history:
+        score = item.get("metrics", {}).get("compliance_score", 0)
+        policy_fn = item.get("policy_filename", "")
+        log_fn = item.get("log_filename", "")
+        
+        # Filter by min_score
+        if min_score is not None and score < min_score:
+            continue
+            
+        # Filter by search term
+        if search:
+            search_lower = search.lower()
+            if search_lower not in policy_fn.lower() and search_lower not in log_fn.lower():
+                continue
+                
+        results.append({
             "id": item.get("id"),
             "timestamp": item.get("timestamp"),
-            "policy_filename": item.get("policy_filename"),
-            "log_filename": item.get("log_filename"),
-            "compliance_score": item.get("metrics", {}).get("compliance_score", 0),
+            "policy_filename": policy_fn,
+            "log_filename": log_fn,
+            "compliance_score": score,
             "total_violations": len(item.get("violations", []))
-        }
-        for item in history
-    ]
+        })
+        
+    # Sorting
+    if sort_by == "timestamp_asc":
+        results.sort(key=lambda x: x.get("timestamp", ""))
+    elif sort_by == "score_desc":
+        results.sort(key=lambda x: x.get("compliance_score", 0), reverse=True)
+    elif sort_by == "score_asc":
+        results.sort(key=lambda x: x.get("compliance_score", 0))
+    else:  # Default to timestamp_desc
+        results.sort(key=lambda x: x.get("timestamp", ""), reverse=True)
+        
+    return results
 
 # IMPORTANT: /api/audits/compare MUST be declared BEFORE /api/audits/{audit_id}
 @app.get("/api/audits/compare", response_model=ComparisonSummary)
@@ -287,8 +322,55 @@ def get_audit_by_id(audit_id: str):
     history = get_history()
     for item in history:
         if item.get("id") == audit_id:
+            # Ensure violations have default status/mitigation_notes
+            violations = item.get("violations", [])
+            for v in violations:
+                if "status" not in v:
+                    v["status"] = "OPEN"
+                if "mitigation_notes" not in v:
+                    v["mitigation_notes"] = ""
             return item
     raise HTTPException(status_code=404, detail="Audit record not found")
+
+@app.patch("/api/audits/{audit_id}/violations/{violation_id}")
+def update_violation(audit_id: str, violation_id: int, update_data: ViolationUpdate):
+    """Update status and mitigation notes of a specific violation."""
+    history = get_history()
+    audit_found = False
+    violation_found = False
+    
+    valid_statuses = ["OPEN", "IN_PROGRESS", "MITIGATED", "FALSE_POSITIVE"]
+    status_upper = update_data.status.upper()
+    if status_upper not in valid_statuses:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Invalid status. Must be one of {valid_statuses}"
+        )
+        
+    for item in history:
+        if item.get("id") == audit_id:
+            audit_found = True
+            violations = item.get("violations", [])
+            for v in violations:
+                if v.get("id") == violation_id:
+                    violation_found = True
+                    v["status"] = status_upper
+                    if update_data.mitigation_notes is not None:
+                        v["mitigation_notes"] = update_data.mitigation_notes
+                    break
+            if violation_found:
+                break
+                
+    if not audit_found:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Audit record not found")
+    if not violation_found:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Violation not found in this audit record")
+        
+    # Save the updated history back to HISTORY_FILE
+    with open(HISTORY_FILE, "w") as f:
+        json.dump(history, f, indent=4)
+        
+    return {"status": "success", "message": "Violation updated successfully"}
 
 @app.post("/api/audit")
 def execute_audit(
@@ -371,6 +453,13 @@ INSTRUCTIONS:
         # 6. Save audit record with metadata to history
         record_id = str(uuid.uuid4())
         timestamp = datetime.now().isoformat()
+        
+        # Set default values for status and mitigation_notes if not present
+        for violation in violations:
+            if "status" not in violation:
+                violation["status"] = "OPEN"
+            if "mitigation_notes" not in violation:
+                violation["mitigation_notes"] = ""
         
         audit_record = {
             "id": record_id,

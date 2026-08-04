@@ -1,5 +1,555 @@
 [
     {
+        "id": "ca7ade4d-6a5c-41a9-a037-ff8a1d227531",
+        "timestamp": "2026-08-03T15:16:56.922831",
+        "policy_filename": "Enterprise_HR_Compliance_Policy.pdf",
+        "log_filename": "csv_data.csv",
+        "metrics": {
+            "compliance_score": 79,
+            "risk_distribution": {
+                "Low": 0,
+                "Medium": 8,
+                "High": 4,
+                "Critical": 0
+            },
+            "violations_by_department": {
+                "Finance": 0,
+                "HR": 0,
+                "IT": 2,
+                "Sales": 8,
+                "Ops": 2
+            },
+            "compliance_trend": [
+                74,
+                76,
+                77,
+                78,
+                79,
+                79
+            ]
+        },
+        "violations": [
+            {
+                "id": 3427,
+                "employee": "E-3427",
+                "department": "Ops",
+                "rule_violated": "Training Completion Requirements (Rule 4)",
+                "log_entry": "Training Date 15-Jul-23 Training Program Name Leadership Development Training Outcome Failed",
+                "severity": "Medium",
+                "explanation": "Employee 3427 failed Leadership Development training on 15-Jul-23 and has not retaken it within the 60-day policy.",
+                "recommendation": "Mandate immediate retraining for Leadership Development and track completion."
+            },
+            {
+                "id": 3428,
+                "employee": "E-3428",
+                "department": "Ops",
+                "rule_violated": "Training Completion Requirements (Rule 4)",
+                "log_entry": "Training Date 12-Sep-22 Training Program Name Customer Service Training Outcome Incomplete",
+                "severity": "Medium",
+                "explanation": "Employee 3428 left Customer Service training incomplete on 12-Sep-22 and has not retaken it within the 60-day policy.",
+                "recommendation": "Schedule a follow-up for Employee 3428 to complete the Customer Service training promptly."
+            },
+            {
+                "id": 3429,
+                "employee": "E-3429",
+                "department": "Sales",
+                "rule_violated": "Training Completion Requirements (Rule 4) and Employee Engagement & Survey Audit Standards (Rule 5)",
+                "log_entry": "Training Date 13-Aug-22 Training Program Name Leadership Development Training Outcome Failed Work-Life Balance Score 1",
+                "severity": "High",
+                "explanation": "Employee 3429 failed Leadership Development training and recorded a critical Work-Life Balance score of 1, indicating significant dissatisfaction.",
+                "recommendation": "Initiate mandatory retraining for Leadership Development and conduct an immediate HR check-in regarding work-life balance."
+            },
+            {
+                "id": 3431,
+                "employee": "E-3431",
+                "department": "Sales",
+                "rule_violated": "Training Completion Requirements (Rule 4)",
+                "log_entry": "Training Date 13-Jul-23 Training Program Name Technical Skills Training Outcome Failed",
+                "severity": "Medium",
+                "explanation": "Employee 3431 failed Technical Skills training on 13-Jul-23 and has not retaken it within the 60-day policy.",
+                "recommendation": "Arrange for Employee 3431 to retake the Technical Skills training to ensure competency."
+            },
+            {
+                "id": 3439,
+                "employee": "E-3439",
+                "department": "Sales",
+                "rule_violated": "Training Completion Requirements (Rule 4) and Employee Engagement & Survey Audit Standards (Rule 5)",
+                "log_entry": "Training Date 09-Mar-23 Training Program Name Technical Skills Training Outcome Incomplete Engagement Score 1",
+                "severity": "High",
+                "explanation": "Employee 3439 left Technical Skills training incomplete and reported a critical Engagement Score of 1, indicating severe disengagement.",
+                "recommendation": "Ensure completion of Technical Skills training and conduct an urgent HR intervention to address the low engagement score."
+            },
+            {
+                "id": 3440,
+                "employee": "E-3440",
+                "department": "Sales",
+                "rule_violated": "Training Completion Requirements (Rule 4) and Employee Engagement & Survey Audit Standards (Rule 5)",
+                "log_entry": "Training Date 29-May-23 Training Program Name Communication Skills Training Outcome Failed Engagement Score 1",
+                "severity": "High",
+                "explanation": "Employee 3440 failed Communication Skills training and reported a critical Engagement Score of 1, indicating severe disengagement.",
+                "recommendation": "Mandate retraining for Communication Skills and initiate an HR audit to investigate the root causes of low engagement."
+            },
+            {
+                "id": 3444,
+                "employee": "E-3444",
+                "department": "Sales",
+                "rule_violated": "Training Completion Requirements (Rule 4) and Employee Engagement & Survey Audit Standards (Rule 5)",
+                "log_entry": "Training Date 02-Nov-22 Training Program Name Technical Skills Training Outcome Failed Engagement Score 1",
+                "severity": "High",
+                "explanation": "Employee 3444 failed Technical Skills training and reported a critical Engagement Score of 1, indicating severe disengagement.",
+                "recommendation": "Schedule immediate retraining for Technical Skills and conduct a comprehensive HR review to address the low engagement."
+            }
+        ]
+    },
+    {
+        "id": "f5fc4e09-9c0e-458e-b4a0-28d9bbfad4c6",
+        "timestamp": "2026-08-03T14:09:42.530882",
+        "policy_filename": "Enterprise_HR_Compliance_Policy.pdf",
+        "log_filename": "csv_data.csv",
+        "metrics": {
+            "compliance_score": 16,
+            "risk_distribution": {
+                "Low": 0,
+                "Medium": 14,
+                "High": 9,
+                "Critical": 0
+            },
+            "violations_by_department": {
+                "Finance": 0,
+                "HR": 0,
+                "IT": 3,
+                "Sales": 18,
+                "Ops": 2
+            },
+            "compliance_trend": [
+                25,
+                22,
+                20,
+                18,
+                17,
+                16
+            ]
+        },
+        "violations": [
+            {
+                "id": 1,
+                "employee": "3428",
+                "department": "Production",
+                "rule_violated": "Policy 4: Training Completion Requirements",
+                "log_entry": "1          3428  11-Feb-23  Production Technician I           EW         Active     Contract  Zone A                  Part-Time  Production                           Aerial  30-08-1965    MA       Male  Hispanic     Widowed       Fully Meets                        3  09-09-2022                 2                   1                        5     12-Sep-22        Customer Service      External       Incomplete                        4         673.02   58",
+                "severity": "High",
+                "explanation": "Employee 3428 failed to retake an 'Incomplete' Customer Service training from 12-Sep-22 within the required 60 days.",
+                "recommendation": "Mandate immediate retraining for employee 3428 and implement automated reminders for training completion."
+            },
+            {
+                "id": 2,
+                "employee": "3429",
+                "department": "Sales",
+                "rule_violated": "Policy 4: Training Completion Requirements",
+                "log_entry": "2          3429  10-Dec-18       Area Sales Manager           PL         Active    Full-Time  Zone B                  Part-Time              Sales             General - Sga  06-10-1991    MA       Male  Hispanic     Widowed       Fully Meets                        4  27-05-2023                 1                   2                        1     13-Aug-22  Leadership Development      External           Failed                        2         413.28   27",
+                "severity": "High",
+                "explanation": "Employee 3429 failed to retake a 'Failed' Leadership Development training from 13-Aug-22 within the required 60 days.",
+                "recommendation": "Schedule immediate retraining for employee 3429 and investigate reasons for repeated training failures."
+            },
+            {
+                "id": 3,
+                "employee": "3429",
+                "department": "Sales",
+                "rule_violated": "Policy 5: Employee Engagement & Survey Audit Standards",
+                "log_entry": "2          3429  10-Dec-18       Area Sales Manager           PL         Active    Full-Time  Zone B                  Part-Time              Sales             General - Sga  06-10-1991    MA       Male  Hispanic     Widowed       Fully Meets                        4  27-05-2023                 1                   2                        1     13-Aug-22  Leadership Development      External           Failed                        2         413.28   27",
+                "severity": "Medium",
+                "explanation": "Employee 3429's average engagement score (1.33) is below the 2.0 threshold, triggering an HR workload and culture audit.",
+                "recommendation": "Initiate an immediate HR Workload & Culture Audit for the Sales department as per policy."
+            },
+            {
+                "id": 4,
+                "employee": "3430",
+                "department": "Sales",
+                "rule_violated": "Policy 2: Workforce Classification & Pay Zone Governance",
+                "log_entry": "3          3430  21-Jun-21       Area Sales Manager         CCDR         Active     Contract  Zone A                  Full-Time              Sales      Finance & Accounting  04-04-1998    ND       Male     Other      Single       Fully Meets                        2  16-06-2023                 5                   5                        4     15-Dec-22      Project Management      External        Completed                        3         663.78   23",
+                "severity": "Medium",
+                "explanation": "Employee 3430 is classified as 'Contract' but also 'Full-Time', which is a conflicting classification under policy.",
+                "recommendation": "Review and correct employee 3430's workforce classification to ensure consistency with policy definitions."
+            },
+            {
+                "id": 5,
+                "employee": "3436",
+                "department": "Sales",
+                "rule_violated": "Policy 4: Training Completion Requirements",
+                "log_entry": "9          3436  21-Jan-22       Area Sales Manager          BPC         Active    Part-Time  Zone B                  Temporary              Sales                 Engineers  11-11-1949    TX       Male     Asian     Widowed       Fully Meets                        5  30-07-2023                 5                   5                        2     09-Apr-23  Leadership Development      Internal           Failed                        5         192.61   73",
+                "severity": "High",
+                "explanation": "Employee 3436 failed to retake a 'Failed' Leadership Development training from 09-Apr-23 within the required 60 days.",
+                "recommendation": "Schedule immediate retraining for employee 3436 and ensure compliance with the 60-day retake policy."
+            },
+            {
+                "id": 6,
+                "employee": "3442",
+                "department": "IT/IS",
+                "rule_violated": "Policy 4: Training Completion Requirements",
+                "log_entry": "15         3442  09-Jul-19       Area Sales Manager          PYZ         Active    Full-Time  Zone A                  Full-Time              IT/IS          Field Operations  24-11-1952    MA       Male     Black      Single           Exceeds                        2  31-10-2022                 2                   5                        3     06-Mar-23      Project Management      External           Failed                        4         286.87   67",
+                "severity": "High",
+                "explanation": "Employee 3442 failed to retake a 'Failed' Project Management training from 06-Mar-23 within the required 60 days.",
+                "recommendation": "Mandate immediate retraining for employee 3442 and review the training completion tracking process in IT."
+            },
+            {
+                "id": 7,
+                "employee": "3443",
+                "department": "IT/IS",
+                "rule_violated": "Policy 2: Workforce Classification & Pay Zone Governance",
+                "log_entry": "16         3443  05-Apr-21       Area Sales Manager          WBL         Active    Full-Time  Zone C                  Part-Time              IT/IS  Project Management - Con  08-04-1994    KY       Male     Asian     Widowed       Fully Meets                        3  29-04-2023                 2                   2                        4     18-Feb-23        Technical Skills      External           Failed                        3         402.13   27",
+                "severity": "Medium",
+                "explanation": "Employee 3443 is classified as 'Full-Time' but also 'Part-Time', which is a conflicting classification under policy.",
+                "recommendation": "Review and correct employee 3443's workforce classification to ensure consistency with policy definitions."
+            },
+            {
+                "id": 8,
+                "employee": "3444",
+                "department": "Sales",
+                "rule_violated": "Policy 4: Training Completion Requirements",
+                "log_entry": "17         3444  28-Nov-21       Area Sales Manager          NEL         Active     Contract  Zone A                  Part-Time              Sales                 Engineers  15-11-1983    KY       Male     Other     Widowed       Fully Meets                        3  14-12-2022                 1                   2                        4     02-Nov-22        Technical Skills      External           Failed                        2         388.84   38",
+                "severity": "High",
+                "explanation": "Employee 3444 failed to retake a 'Failed' Technical Skills training from 02-Nov-22 within the required 60 days.",
+                "recommendation": "Mandate immediate retraining for employee 3444 and reinforce the importance of timely training completion."
+            }
+        ]
+    },
+    {
+        "id": "a6917eec-2b71-41dd-9cb7-c4ffcf939a73",
+        "timestamp": "2026-08-03T14:06:32.381412",
+        "policy_filename": "Enterprise_HR_Compliance_Policy.pdf",
+        "log_filename": "csv_data.csv",
+        "metrics": {
+            "compliance_score": 56,
+            "risk_distribution": {
+                "Low": 0,
+                "Medium": 12,
+                "High": 12,
+                "Critical": 1
+            },
+            "violations_by_department": {
+                "Finance": 0,
+                "HR": 0,
+                "IT": 3,
+                "Sales": 19,
+                "Ops": 3
+            },
+            "compliance_trend": [
+                52,
+                54,
+                51,
+                53,
+                55,
+                56
+            ]
+        },
+        "violations": [
+            {
+                "id": 3428,
+                "employee": "E-3428",
+                "department": "Ops",
+                "rule_violated": "Workforce Classification Policy (Section 2)",
+                "log_entry": "EmployeeType: Contract, EmployeeClassificationType: Part-Time",
+                "severity": "High",
+                "explanation": "Employee 3428 is classified as both 'Contract' and 'Part-Time', which are conflicting classifications under policy.",
+                "recommendation": "Review and correct employee classification for E-3428 to align with a single, defined workforce type."
+            },
+            {
+                "id": 3429,
+                "employee": "E-3429",
+                "department": "Sales",
+                "rule_violated": "Workforce Classification Policy (Section 2)",
+                "log_entry": "EmployeeType: Full-Time, EmployeeClassificationType: Part-Time",
+                "severity": "High",
+                "explanation": "Employee 3429 is classified as both 'Full-Time' and 'Part-Time', violating the clear workforce classification policy.",
+                "recommendation": "Update employee classification for E-3429 to reflect a single, accurate employment type."
+            },
+            {
+                "id": 3430,
+                "employee": "E-3430",
+                "department": "Sales",
+                "rule_violated": "Workforce Classification Policy (Section 2)",
+                "log_entry": "EmployeeType: Contract, EmployeeClassificationType: Full-Time",
+                "severity": "High",
+                "explanation": "Employee 3430 is incorrectly classified as both 'Contract' and 'Full-Time', which are mutually exclusive under policy.",
+                "recommendation": "Rectify the conflicting employee classification for E-3430 to ensure policy adherence."
+            },
+            {
+                "id": 3443,
+                "employee": "E-3443",
+                "department": "IT",
+                "rule_violated": "Workforce Classification Policy (Section 2)",
+                "log_entry": "EmployeeType: Full-Time, EmployeeClassificationType: Part-Time",
+                "severity": "High",
+                "explanation": "Employee 3443 is classified as both 'Full-Time' and 'Part-Time', which is a direct contradiction of workforce policy.",
+                "recommendation": "Correct the employee classification for E-3443 to a single, consistent employment type."
+            },
+            {
+                "id": 3427,
+                "employee": "E-3427",
+                "department": "Ops",
+                "rule_violated": "Training & Professional Development Policy (Section 4)",
+                "log_entry": "Training Date: 15-Jul-23, Training Outcome: Failed",
+                "severity": "Medium",
+                "explanation": "Employee 3427 failed a training on 15-Jul-23 and has not retaken it within the required 60 calendar days.",
+                "recommendation": "Schedule mandatory retraining for E-3427 immediately to ensure compliance with completion requirements."
+            },
+            {
+                "id": 3428,
+                "employee": "E-3428",
+                "department": "Ops",
+                "rule_violated": "Training & Professional Development Policy (Section 4)",
+                "log_entry": "Training Date: 12-Sep-22, Training Outcome: Incomplete",
+                "severity": "Medium",
+                "explanation": "Employee 3428 has an incomplete training from 12-Sep-22 that was not retaken within the 60-day policy window.",
+                "recommendation": "Follow up with E-3428 to complete the outstanding training and ensure policy adherence."
+            },
+            {
+                "id": 3429,
+                "employee": "E-3429",
+                "department": "Sales",
+                "rule_violated": "Training & Professional Development Policy (Section 4)",
+                "log_entry": "Training Date: 13-Aug-22, Training Outcome: Failed",
+                "severity": "Medium",
+                "explanation": "Employee 3429 failed a training on 13-Aug-22 and has not retaken it within the required 60 calendar days.",
+                "recommendation": "Arrange for E-3429 to retake the failed training promptly to meet policy requirements."
+            },
+            {
+                "id": 3429,
+                "employee": "E-3429",
+                "department": "Sales",
+                "rule_violated": "Employee Engagement & Survey Audit Standards (Section 5)",
+                "log_entry": "Engagement Score: 1, Satisfaction Score: 2, Work-Life Balance Score: 1",
+                "severity": "Critical",
+                "explanation": "Employee 3429's average engagement score (1.33) is below the 2.0 threshold, triggering an immediate HR audit.",
+                "recommendation": "Initiate an immediate HR Workload & Culture Audit for the department associated with E-3429 as per policy."
+            }
+        ]
+    },
+    {
+        "id": "242dccd6-e37f-4aa6-b84f-0523e80e6c3e",
+        "timestamp": "2026-08-03T13:20:16.982338",
+        "policy_filename": "Enterprise_HR_Compliance_Policy.pdf",
+        "log_filename": "csv_data.csv",
+        "metrics": {
+            "compliance_score": 26,
+            "risk_distribution": {
+                "Low": 0,
+                "Medium": 12,
+                "High": 7,
+                "Critical": 0
+            },
+            "violations_by_department": {
+                "Finance": 0,
+                "HR": 0,
+                "IT": 2,
+                "Sales": 14,
+                "Ops": 3
+            },
+            "compliance_trend": [
+                45,
+                40,
+                35,
+                30,
+                28,
+                26
+            ]
+        },
+        "violations": [
+            {
+                "id": 3427,
+                "employee": "3427",
+                "department": "Ops",
+                "rule_violated": "Training Completion Requirements (Failed training not retaken within 60 days)",
+                "log_entry": "3427 20-Sep-19 Production Technician I CCDR Active Contract Zone C Temporary Production Finance & Accounting 07-10-1969 MA Female White Widowed Fully Meets 4 14-01-2023 1 2 3 15-Jul-23 Leadership Development Internal Failed 2 606.11 50",
+                "severity": "Medium",
+                "explanation": "Employee 3427 failed a mandatory training program and did not retake it within the required 60-day period.",
+                "recommendation": "Schedule immediate retraining for employee 3427 and implement a tracking system for failed/incomplete trainings."
+            },
+            {
+                "id": 3428,
+                "employee": "3428",
+                "department": "Ops",
+                "rule_violated": "Training Completion Requirements (Incomplete training not retaken within 60 days)",
+                "log_entry": "3428 11-Feb-23 Production Technician I EW Active Contract Zone A Part-Time Production Aerial 30-08-1965 MA Male Hispanic Widowed Fully Meets 3 09-09-2022 2 1 5 12-Sep-22 Customer Service External Incomplete 4 673.02 58",
+                "severity": "Medium",
+                "explanation": "Employee 3428 has an incomplete training record from over a year ago that was not addressed within the policy's 60-day window.",
+                "recommendation": "Follow up with employee 3428 and their manager to ensure completion of the required training."
+            },
+            {
+                "id": 3429,
+                "employee": "3429",
+                "department": "Sales",
+                "rule_violated": "Training Completion Requirements (Failed training not retaken within 60 days)",
+                "log_entry": "3429 10-Dec-18 Area Sales Manager PL Active Full-Time Zone B Part-Time Sales General - Sga 06-10-1991 MA Male Hispanic Widowed Fully Meets 4 27-05-2023 1 2 1 13-Aug-22 Leadership Development External Failed 2 413.28 27",
+                "severity": "Medium",
+                "explanation": "Employee 3429 failed a training program and did not retake it within the required 60-day period.",
+                "recommendation": "Mandate retraining for employee 3429 and review departmental training compliance processes."
+            },
+            {
+                "id": 3431,
+                "employee": "3431",
+                "department": "Sales",
+                "rule_violated": "Training Completion Requirements (Failed training not retaken within 60 days)",
+                "log_entry": "3431 29-Jun-19 Area Sales Manager TNS Active Contract Zone A Temporary Sales General - Con 29-08-1969 FL Female Other Married Fully Meets 3 25-11-2022 2 5 3 13-Jul-23 Technical Skills External Failed 5 399.03 50",
+                "severity": "Medium",
+                "explanation": "Employee 3431 failed a technical training and has not retaken it within the 60-day policy timeframe.",
+                "recommendation": "Ensure employee 3431 completes the failed technical skills training promptly."
+            },
+            {
+                "id": 3427,
+                "employee": "3427",
+                "department": "Ops",
+                "rule_violated": "Employee Engagement & Survey Audit Standards (Engagement score below 2.0)",
+                "log_entry": "3427 20-Sep-19 Production Technician I CCDR Active Contract Zone C Temporary Production Finance & Accounting 07-10-1969 MA Female White Widowed Fully Meets 4 14-01-2023 1 2 3 15-Jul-23 Leadership Development Internal Failed 2 606.11 50",
+                "severity": "High",
+                "explanation": "Employee 3427's engagement score of 1.0 is below the policy threshold of 2.0, triggering an HR workload and culture audit for their business unit.",
+                "recommendation": "Initiate an immediate HR Workload & Culture Audit for the Production department as per policy."
+            },
+            {
+                "id": 3429,
+                "employee": "3429",
+                "department": "Sales",
+                "rule_violated": "Employee Engagement & Survey Audit Standards (Engagement score below 2.0)",
+                "log_entry": "3429 10-Dec-18 Area Sales Manager PL Active Full-Time Zone B Part-Time Sales General - Sga 06-10-1991 MA Male Hispanic Widowed Fully Meets 4 27-05-2023 1 2 1 13-Aug-22 Leadership Development External Failed 2 413.28 27",
+                "severity": "High",
+                "explanation": "Employee 3429's engagement score of 1.0 is below the policy threshold, requiring an HR workload and culture audit for the Sales department.",
+                "recommendation": "Initiate an immediate HR Workload & Culture Audit for the Sales department as per policy."
+            },
+            {
+                "id": 3433,
+                "employee": "3433",
+                "department": "Sales",
+                "rule_violated": "Employee Engagement & Survey Audit Standards (Engagement score below 2.0)",
+                "log_entry": "3433 06-Apr-22 Area Sales Manager WBL Active Full-Time Zone B Temporary Sales General - Eng 01-07-1942 CA Female Hispanic Divorced Exceeds 4 25-03-2023 1 5 2 06-Aug-22 Customer Service External Passed 5 295.08 80",
+                "severity": "High",
+                "explanation": "Employee 3433's engagement score of 1.0 is below the policy threshold, requiring an HR workload and culture audit for the Sales department.",
+                "recommendation": "Include employee 3433's case in the HR Workload & Culture Audit for the Sales department."
+            },
+            {
+                "id": 3434,
+                "employee": "3434",
+                "department": "Sales",
+                "rule_violated": "Employee Engagement & Survey Audit Standards (Engagement score below 2.0)",
+                "log_entry": "3434 06-Nov-20 Area Sales Manager CCDR Active Contract Zone C Full-Time Sales Engineers 07-03-1957 OR Female White Divorced Fully Meets 2 21-04-2023 1 4 2 07-Oct-22 Leadership Development Internal Passed 3 790.15 63",
+                "severity": "High",
+                "explanation": "Employee 3434's engagement score of 1.0 is below the policy threshold, requiring an HR workload and culture audit for the Sales department.",
+                "recommendation": "Include employee 3434's case in the HR Workload & Culture Audit for the Sales department."
+            }
+        ]
+    },
+    {
+        "id": "d21e3105-89f9-4fd8-bfd0-8e97233cb438",
+        "timestamp": "2026-08-03T12:51:25.758668",
+        "policy_filename": "Enterprise_HR_Compliance_Policy.pdf",
+        "log_filename": "csv_data.csv",
+        "metrics": {
+            "compliance_score": 63,
+            "risk_distribution": {
+                "Low": 0,
+                "Medium": 8,
+                "High": 3,
+                "Critical": 1
+            },
+            "violations_by_department": {
+                "Finance": 0,
+                "HR": 0,
+                "IT": 2,
+                "Sales": 9,
+                "Ops": 1
+            },
+            "compliance_trend": [
+                55,
+                58,
+                60,
+                61,
+                62,
+                63
+            ]
+        },
+        "violations": [
+            {
+                "id": 3429,
+                "employee": "3429",
+                "department": "Sales",
+                "rule_violated": "Policy 2 - Workforce Classification Inconsistency",
+                "log_entry": "EmployeeType: Full-Time, EmployeeClassificationType: Part-Time",
+                "severity": "Critical",
+                "explanation": "Employee 3429's classification types are inconsistent, indicating a systemic data integrity issue.",
+                "recommendation": "Conduct a full audit of employee classification data and rectify all inconsistencies across the HR system."
+            },
+            {
+                "id": 3429,
+                "employee": "3429",
+                "department": "Sales",
+                "rule_violated": "Policy 5 - Employee Engagement & Survey Audit Standards",
+                "log_entry": "Engagement Score: 1, Satisfaction Score: 2, Work-Life Balance Score: 1",
+                "severity": "High",
+                "explanation": "Employee 3429's average engagement metrics (1.33) are below the 2.0 threshold, triggering an HR audit.",
+                "recommendation": "Initiate an immediate HR Workload & Culture Audit for the Sales department focusing on employee 3429's situation."
+            },
+            {
+                "id": 3428,
+                "employee": "3428",
+                "department": "Production",
+                "rule_violated": "Policy 4 - Training Completion Requirements (Contract Personnel)",
+                "log_entry": "Training Date: 12-Sep-22, Training Outcome: Incomplete",
+                "severity": "High",
+                "explanation": "Contract employee 3428 failed to retake incomplete training within 60 days, violating specific contract personnel protocols.",
+                "recommendation": "Schedule mandatory retraining for employee 3428 immediately and review contract compliance."
+            },
+            {
+                "id": 3444,
+                "employee": "3444",
+                "department": "Sales",
+                "rule_violated": "Policy 4 - Training Completion Requirements (Contract Personnel)",
+                "log_entry": "Training Date: 02-Nov-22, Training Outcome: Failed",
+                "severity": "High",
+                "explanation": "Contract employee 3444 failed to retake failed training within 60 days, violating specific contract personnel protocols.",
+                "recommendation": "Schedule and track completion of the required retraining for employee 3444 and review contract compliance."
+            },
+            {
+                "id": 3436,
+                "employee": "3436",
+                "department": "Sales",
+                "rule_violated": "Policy 4 - Training Completion Requirements",
+                "log_entry": "Training Date: 09-Apr-23, Training Outcome: Failed",
+                "severity": "Medium",
+                "explanation": "Part-time employee 3436 failed to retake failed training within the required 60-day period.",
+                "recommendation": "Mandate immediate retraining for employee 3436 to address the failed training."
+            },
+            {
+                "id": 3442,
+                "employee": "3442",
+                "department": "IT/IS",
+                "rule_violated": "Policy 4 - Training Completion Requirements",
+                "log_entry": "Training Date: 06-Mar-23, Training Outcome: Failed",
+                "severity": "Medium",
+                "explanation": "Full-time employee 3442 failed to retake failed training within the required 60-day period.",
+                "recommendation": "Ensure employee 3442 completes the required retraining without delay."
+            },
+            {
+                "id": 3443,
+                "employee": "3443",
+                "department": "IT/IS",
+                "rule_violated": "Policy 4 - Training Completion Requirements",
+                "log_entry": "Training Date: 18-Feb-23, Training Outcome: Failed",
+                "severity": "Medium",
+                "explanation": "Full-time employee 3443 failed to retake failed training within the required 60-day period.",
+                "recommendation": "Mandate immediate retraining for employee 3443 to address the failed training."
+            },
+            {
+                "id": 3437,
+                "employee": "3437",
+                "department": "Sales",
+                "rule_violated": "Policy 4 - Training Completion Requirements",
+                "log_entry": "Training Date: 20-Oct-22, Training Outcome: Failed",
+                "severity": "Medium",
+                "explanation": "Contract employee 3437 failed to retake failed training within the required 60-day period.",
+                "recommendation": "Schedule and track completion of the required retraining for employee 3437."
+            }
+        ]
+    },
+    {
         "id": "38b7013d-eb32-4f78-a751-31b43454c3da",
         "timestamp": "2026-08-03T00:10:15.229248",
         "policy_filename": "Enterprise_HR_Compliance_Policy.pdf",

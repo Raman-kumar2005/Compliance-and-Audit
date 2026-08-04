@@ -3,13 +3,15 @@ import AuditComparison from './components/AuditComparison';
 import { 
   Upload, AlertTriangle, ShieldAlert, FileText, Loader2, 
   Sparkles, Download, Search, 
-  ArrowRight, FileSpreadsheet, History, PlusCircle, ArrowLeft, Clock, LogOut, GitCompare
+  ArrowRight, FileSpreadsheet, History, PlusCircle, ArrowLeft, Clock, LogOut, GitCompare,
+  ArrowUpDown
 } from 'lucide-react';
 import axios from 'axios';
 import { 
   PieChart, Pie, Cell, BarChart, Bar, XAxis, YAxis, CartesianGrid, 
   Tooltip as RechartsTooltip, LineChart, Line, ResponsiveContainer 
 } from 'recharts';
+import html2pdf from 'html2pdf.js';
 
 const MOCK_RESULTS = {
   metrics: {
@@ -51,8 +53,17 @@ export default function Dashboard({ onLogout }) {
   const [error, setError] = useState('');
   
   const [filterSeverity, setFilterSeverity] = useState('ALL');
+  const [filterDepartment, setFilterDepartment] = useState('ALL');
+  const [filterStatus, setFilterStatus] = useState('ALL');
   const [searchQuery, setSearchQuery] = useState('');
-  const [showAllViolations, setShowAllViolations] = useState(false);
+  const [sortByField, setSortByField] = useState('severity');
+  const [sortOrder, setSortOrder] = useState('desc');
+  const [selectedViolation, setSelectedViolation] = useState(null);
+  const [mitigationStatus, setMitigationStatus] = useState('OPEN');
+  const [mitigationNotes, setMitigationNotes] = useState('');
+  const [savingMitigation, setSavingMitigation] = useState(false);
+  const [csvExporting, setCsvExporting] = useState(false);
+  const [pdfGenerating, setPdfGenerating] = useState(false);
 
   const BACKEND_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000/api';
 
@@ -110,33 +121,207 @@ export default function Dashboard({ onLogout }) {
 
   const loadDemoData = () => {
     setError('');
-    setShowAllViolations(false);
     setAuditData(MOCK_RESULTS);
     setActiveTab('report');
   };
 
   const viewHistoricalReport = (record) => {
-    setShowAllViolations(false);
     setAuditData(record);
     setActiveTab('report');
   };
 
   const exportPDF = () => {
-    window.print();
+    if (!auditData) return;
+    setPdfGenerating(true);
+    
+    const element = document.getElementById('report-container');
+    const opt = {
+      margin:       0.3,
+      filename:     `Compliance_Audit_Report_${auditData.id ? auditData.id.slice(0, 8) : 'demo'}.pdf`,
+      image:        { type: 'jpeg', quality: 0.98 },
+      html2canvas:  { 
+        scale: 2, 
+        useCORS: true,
+        logging: false
+      },
+      jsPDF:        { unit: 'in', format: 'letter', orientation: 'portrait' }
+    };
+    
+    html2pdf()
+      .from(element)
+      .set(opt)
+      .save()
+      .then(() => {
+        setPdfGenerating(false);
+      })
+      .catch(err => {
+        console.error("PDF generation failed, falling back to print:", err);
+        setPdfGenerating(false);
+        window.print();
+      });
+  };
+
+  const exportCSV = () => {
+    if (!auditData) return;
+    setCsvExporting(true);
+    try {
+      const headers = ['Violation ID', 'Employee', 'Department', 'Rule Violated', 'Severity', 'Resolution Status', 'Log Evidence', 'Explanation', 'Recommendation', 'Mitigation Notes'];
+      
+      const escapeCSVField = (field) => {
+        if (field === null || field === undefined) return '';
+        const stringVal = String(field);
+        if (stringVal.includes(',') || stringVal.includes('"') || stringVal.includes('\n') || stringVal.includes('\r')) {
+          return `"${stringVal.replace(/"/g, '""')}"`;
+        }
+        return stringVal;
+      };
+
+      const csvRows = [
+        headers.join(','),
+        ...filteredViolations.map(v => [
+          v.id,
+          v.employee || 'Unknown',
+          v.department || 'Unknown',
+          v.rule_violated || '',
+          v.severity || 'Unknown',
+          v.status || 'OPEN',
+          v.log_entry || '',
+          v.explanation || '',
+          v.recommendation || '',
+          v.mitigation_notes || ''
+        ].map(escapeCSVField).join(','))
+      ];
+      
+      const csvString = csvRows.join('\n');
+      const blob = new Blob([csvString], { type: 'text/csv;charset=utf-8;' });
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement("a");
+      link.setAttribute("href", url);
+      link.setAttribute("download", `Compliance_Violations_${auditData.id ? auditData.id.slice(0, 8) : 'demo'}.csv`);
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+    } catch (err) {
+      console.error("CSV export failed:", err);
+    } finally {
+      setCsvExporting(false);
+    }
+  };
+
+  const handleSaveMitigation = async () => {
+    if (!selectedViolation) return;
+    setSavingMitigation(true);
+    
+    try {
+      // If there's no real audit record ID (e.g. demo data), update state locally only
+      if (!auditData.id) {
+        const updatedViolations = auditData.violations.map(v => {
+          if (v.id === selectedViolation.id) {
+            return { ...v, status: mitigationStatus, mitigation_notes: mitigationNotes };
+          }
+          return v;
+        });
+        setAuditData({
+          ...auditData,
+          violations: updatedViolations
+        });
+        setSelectedViolation(null);
+        return;
+      }
+
+      const response = await axios.patch(
+        `${BACKEND_URL}/audits/${auditData.id}/violations/${selectedViolation.id}`,
+        {
+          status: mitigationStatus,
+          mitigation_notes: mitigationNotes
+        }
+      );
+      
+      if (response.data.status === 'success') {
+        const updatedViolations = auditData.violations.map(v => {
+          if (v.id === selectedViolation.id) {
+            return { ...v, status: mitigationStatus, mitigation_notes: mitigationNotes };
+          }
+          return v;
+        });
+        setAuditData({
+          ...auditData,
+          violations: updatedViolations
+        });
+        setSelectedViolation(null);
+      }
+    } catch (err) {
+      console.error("Failed to update violation mitigation status:", err);
+      alert(err.response?.data?.detail || "Failed to update violation on backend.");
+    } finally {
+      setSavingMitigation(false);
+    }
   };
 
   const violations = auditData?.violations || [];
   const metrics = auditData?.metrics;
 
-  const filteredData = violations.filter(item => {
+  const SEVERITY_WEIGHT = {
+    CRITICAL: 4, HIGH: 3, MEDIUM: 2, LOW: 1,
+    Critical: 4, High: 3, Medium: 2, Low: 1
+  };
+  
+  const STATUS_WEIGHT = {
+    OPEN: 4, IN_PROGRESS: 3, MITIGATED: 2, FALSE_POSITIVE: 1
+  };
+
+  const filteredViolations = violations.filter(item => {
     const itemSeverity = item.severity ? item.severity.toUpperCase() : 'UNKNOWN';
     const matchesSeverity = filterSeverity === 'ALL' || itemSeverity === filterSeverity;
-    const matchesSearch = 
-      (item.rule_violated || '').toLowerCase().includes(searchQuery.toLowerCase()) ||
-      (item.log_entry || '').toLowerCase().includes(searchQuery.toLowerCase()) ||
-      (item.explanation || '').toLowerCase().includes(searchQuery.toLowerCase());
-    return matchesSeverity && matchesSearch;
+    
+    const itemDept = item.department ? item.department.toUpperCase() : 'UNKNOWN';
+    const matchesDept = filterDepartment === 'ALL' || itemDept === filterDepartment.toUpperCase();
+    
+    const itemStatus = item.status ? item.status.toUpperCase() : 'OPEN';
+    const matchesStatus = filterStatus === 'ALL' || itemStatus === filterStatus;
+    
+    const q = searchQuery.toLowerCase();
+    const matchesSearch = !q ||
+      (item.employee || '').toLowerCase().includes(q) ||
+      (item.department || '').toLowerCase().includes(q) ||
+      (item.rule_violated || '').toLowerCase().includes(q) ||
+      (item.log_entry || '').toLowerCase().includes(q) ||
+      (item.explanation || '').toLowerCase().includes(q) ||
+      (item.recommendation || '').toLowerCase().includes(q);
+      
+    return matchesSeverity && matchesDept && matchesStatus && matchesSearch;
   });
+
+  const sortedViolations = [...filteredViolations].sort((a, b) => {
+    let valA, valB;
+    if (sortByField === 'severity') {
+      valA = SEVERITY_WEIGHT[a.severity] || 0;
+      valB = SEVERITY_WEIGHT[b.severity] || 0;
+    } else if (sortByField === 'status') {
+      valA = STATUS_WEIGHT[a.status] || 4;
+      valB = STATUS_WEIGHT[b.status] || 4;
+    } else if (sortByField === 'employee') {
+      valA = a.employee || '';
+      valB = b.employee || '';
+    } else if (sortByField === 'department') {
+      valA = a.department || '';
+      valB = b.department || '';
+    } else {
+      valA = a.id;
+      valB = b.id;
+    }
+    
+    if (typeof valA === 'string') {
+      return sortOrder === 'asc' ? valA.localeCompare(valB) : valB.localeCompare(valA);
+    } else {
+      return sortOrder === 'asc' ? valA - valB : valB - valA;
+    }
+  });
+
+  const getSeverityCount = (severity) => {
+    if (severity === 'ALL') return violations.length;
+    return violations.filter(v => (v.severity || '').toUpperCase() === severity).length;
+  };
 
   const pieData = metrics ? [
     { name: 'Low', value: metrics.risk_distribution?.Low || 0 },
@@ -384,9 +569,14 @@ export default function Dashboard({ onLogout }) {
                 
                 <button
                   onClick={exportPDF}
-                  className="no-print bg-[#059669] hover:bg-[#047857] text-white px-6 py-3 rounded-xl font-bold flex items-center gap-3 transition-all shadow-lg shadow-emerald-500/20 cursor-pointer"
+                  disabled={pdfGenerating}
+                  className="no-print bg-[#059669] hover:bg-[#047857] text-white px-6 py-3 rounded-xl font-bold flex items-center gap-3 transition-all shadow-lg shadow-emerald-500/20 cursor-pointer disabled:opacity-50"
                 >
-                  <Download className="w-5 h-5" /> Export PDF Report
+                  {pdfGenerating ? (
+                    <><Loader2 className="w-5 h-5 animate-spin" /> Generating PDF...</>
+                  ) : (
+                    <><Download className="w-5 h-5" /> Export PDF Report</>
+                  )}
                 </button>
               </div>
 
@@ -412,10 +602,11 @@ export default function Dashboard({ onLogout }) {
                         </PieChart>
                       </ResponsiveContainer>
                     </div>
-                    <div className="flex gap-4 text-xs font-bold text-slate-500 mt-2">
+                    <div className="flex gap-4 text-xs font-bold text-slate-50 mt-2 bg-slate-900/10 px-3 py-1 rounded-full border border-slate-200">
                       <div className="flex items-center gap-1.5"><div className="w-2.5 h-2.5 bg-emerald-500 rounded-full"></div>Low</div>
-                      <div className="flex items-center gap-1.5"><div className="w-2.5 h-2.5 bg-amber-500 rounded-full"></div>Medium</div>
-                      <div className="flex items-center gap-1.5"><div className="w-2.5 h-2.5 bg-red-500 rounded-full"></div>Critical</div>
+                      <div className="flex items-center gap-1.5"><div className="w-2.5 h-2.5 bg-amber-500 rounded-full"></div>Med</div>
+                      <div className="flex items-center gap-1.5"><div className="w-2.5 h-2.5 bg-orange-500 rounded-full"></div>High</div>
+                      <div className="flex items-center gap-1.5"><div className="w-2.5 h-2.5 bg-red-500 rounded-full"></div>Crit</div>
                     </div>
                   </div>
                 </div>
@@ -452,103 +643,390 @@ export default function Dashboard({ onLogout }) {
                   </div>
                 </div>
 
-                {/* Recent Table */}
+                {/* Operations Summary Card */}
                 <div className="bg-white p-6 rounded-2xl shadow-sm border border-slate-200 flex flex-col justify-between">
-                  <h3 className="text-sm font-bold text-slate-600 mb-4">Recent Violations</h3>
-                  <div className="overflow-x-auto flex-1">
+                  <div>
+                    <h3 className="text-sm font-bold text-slate-600 mb-4">Operations & Compliance Actions</h3>
+                    <div className="grid grid-cols-2 gap-4 mb-6">
+                      <div className="bg-slate-50 p-4 rounded-xl border border-slate-100 text-center">
+                        <span className="text-xs font-semibold text-slate-500 block mb-1">Total Flags</span>
+                        <span className="text-2xl font-bold text-slate-800">{violations.length}</span>
+                      </div>
+                      <div className="bg-red-50 p-4 rounded-xl border border-red-100 text-center">
+                        <span className="text-xs font-semibold text-red-600 block mb-1">Open Issues</span>
+                        <span className="text-2xl font-bold text-red-700">
+                          {violations.filter(v => !v.status || v.status === 'OPEN' || v.status === 'IN_PROGRESS').length}
+                        </span>
+                      </div>
+                      <div className="bg-emerald-50 p-4 rounded-xl border border-emerald-100 text-center">
+                        <span className="text-xs font-semibold text-emerald-600 block mb-1">Mitigated Items</span>
+                        <span className="text-2xl font-bold text-emerald-700">
+                          {violations.filter(v => v.status === 'MITIGATED').length}
+                        </span>
+                      </div>
+                      <div className="bg-slate-50 p-4 rounded-xl border border-slate-100 text-center">
+                        <span className="text-xs font-semibold text-slate-500 block mb-1">False Positives</span>
+                        <span className="text-2xl font-bold text-slate-700">
+                          {violations.filter(v => v.status === 'FALSE_POSITIVE').length}
+                        </span>
+                      </div>
+                    </div>
+                  </div>
+                  
+                  <div className="space-y-3 no-print">
+                    <div className="flex gap-3">
+                      <button
+                        onClick={exportPDF}
+                        disabled={pdfGenerating}
+                        className="flex-1 bg-[#059669] hover:bg-[#047857] text-white py-3 px-4 rounded-xl font-bold text-sm flex items-center justify-center gap-2 transition-all shadow-lg shadow-emerald-500/10 cursor-pointer disabled:opacity-50"
+                      >
+                        {pdfGenerating ? (
+                          <><Loader2 className="w-4 h-4 animate-spin" /> Generating...</>
+                        ) : (
+                          <><Download className="w-4 h-4" /> Export PDF</>
+                        )}
+                      </button>
+                      
+                      <button
+                        onClick={exportCSV}
+                        disabled={csvExporting}
+                        className="flex-1 bg-indigo-600 hover:bg-indigo-700 text-white py-3 px-4 rounded-xl font-bold text-sm flex items-center justify-center gap-2 transition-all shadow-lg shadow-indigo-500/10 cursor-pointer disabled:opacity-50"
+                      >
+                        {csvExporting ? (
+                          <><Loader2 className="w-4 h-4 animate-spin" /> Preparing...</>
+                        ) : (
+                          <><FileSpreadsheet className="w-4 h-4" /> Export CSV</>
+                        )}
+                      </button>
+                    </div>
+                    
+                    <button
+                      onClick={() => { setActiveTab('new_audit'); setAuditData(null); }}
+                      className="w-full bg-slate-800 hover:bg-slate-900 text-white py-3 rounded-xl font-bold text-sm flex items-center justify-center gap-2 transition-colors cursor-pointer"
+                    >
+                      <PlusCircle className="w-4 h-4 text-indigo-400" /> Run New Scan
+                    </button>
+                  </div>
+                </div>
+              </div>
+
+              {/* ENTERPRISE VIOLATIONS EXPLORER & REGISTRY */}
+              <div className="mt-8 bg-white p-6 md:p-8 rounded-2xl shadow-sm border border-slate-200" id="violations-registry-section">
+                <div className="flex flex-col xl:flex-row justify-between items-stretch xl:items-center gap-4 mb-6 pb-6 border-b border-slate-100">
+                  <div>
+                    <h2 className="text-2xl font-extrabold text-[#1e293b] flex items-center gap-2">
+                      <AlertTriangle className="text-amber-500 w-6 h-6" /> Violations Explorer
+                    </h2>
+                    <p className="text-slate-500 text-sm mt-0.5 font-medium">Showing {sortedViolations.length} of {violations.length} logged flags.</p>
+                  </div>
+                  
+                  {/* Filters Toolbar */}
+                  <div className="flex flex-wrap items-center gap-3 no-print">
+                    {/* Search */}
+                    <div className="relative flex-grow sm:flex-grow-0">
+                      <Search className="w-4 h-4 text-slate-400 absolute left-3 top-3" />
+                      <input 
+                        type="text" 
+                        placeholder="Search employee, rules, log..." 
+                        value={searchQuery} 
+                        onChange={(e) => setSearchQuery(e.target.value)} 
+                        className="w-full sm:w-56 pl-9 pr-3 py-2 bg-slate-50 border border-slate-300 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500" 
+                      />
+                    </div>
+                    
+                    {/* Department Dropdown */}
+                    <select
+                      value={filterDepartment}
+                      onChange={(e) => setFilterDepartment(e.target.value)}
+                      className="bg-slate-50 border border-slate-300 rounded-xl text-sm px-3 py-2 outline-none focus:ring-2 focus:ring-indigo-500 font-semibold text-slate-700"
+                    >
+                      <option value="ALL">All Departments</option>
+                      <option value="Finance">Finance</option>
+                      <option value="HR">HR</option>
+                      <option value="IT">IT</option>
+                      <option value="Sales">Sales</option>
+                      <option value="Ops">Ops</option>
+                    </select>
+
+                    {/* Status Dropdown */}
+                    <select
+                      value={filterStatus}
+                      onChange={(e) => setFilterStatus(e.target.value)}
+                      className="bg-slate-50 border border-slate-300 rounded-xl text-sm px-3 py-2 outline-none focus:ring-2 focus:ring-indigo-500 font-semibold text-slate-700"
+                    >
+                      <option value="ALL">All Statuses</option>
+                      <option value="OPEN">Open</option>
+                      <option value="IN_PROGRESS">In Progress</option>
+                      <option value="MITIGATED">Mitigated</option>
+                      <option value="FALSE_POSITIVE">False Positive</option>
+                    </select>
+
+                    {/* Sort Dropdown */}
+                    <div className="flex items-center gap-1 bg-slate-50 border border-slate-300 rounded-xl px-2">
+                      <select
+                        value={sortByField}
+                        onChange={(e) => setSortByField(e.target.value)}
+                        className="bg-transparent border-0 text-sm py-2 pr-2 outline-none cursor-pointer focus:ring-0 font-semibold text-slate-700"
+                      >
+                        <option value="severity">Sort: Severity</option>
+                        <option value="status">Sort: Status</option>
+                        <option value="employee">Sort: Employee</option>
+                        <option value="department">Sort: Department</option>
+                      </select>
+                      <button 
+                        onClick={() => setSortOrder(prev => prev === 'asc' ? 'desc' : 'asc')}
+                        className="p-1 hover:bg-slate-200 rounded text-slate-500 cursor-pointer"
+                        title={sortOrder === 'asc' ? 'Ascending' : 'Descending'}
+                      >
+                        <ArrowUpDown className="w-4 h-4" />
+                      </button>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Severity Badge Selector */}
+                <div className="flex flex-wrap gap-1.5 mb-6 no-print">
+                  {['ALL', 'CRITICAL', 'HIGH', 'MEDIUM', 'LOW'].map((level) => {
+                    const isActive = filterSeverity === level;
+                    const count = getSeverityCount(level);
+                    return (
+                      <button
+                        key={level} 
+                        onClick={() => setFilterSeverity(level)}
+                        className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all cursor-pointer flex items-center gap-2 ${
+                          isActive 
+                            ? 'bg-slate-900 text-white shadow-sm' 
+                            : 'bg-slate-50 text-slate-600 hover:bg-slate-100 border border-slate-200'
+                        }`}
+                      >
+                        {level}
+                        <span className={`px-1.5 py-0.5 rounded-full text-[10px] ${
+                          isActive ? 'bg-indigo-500 text-white' : 'bg-slate-200 text-slate-600'
+                        }`}>{count}</span>
+                      </button>
+                    );
+                  })}
+                </div>
+
+                {/* Table */}
+                {sortedViolations.length === 0 ? (
+                  <div className="p-12 bg-slate-50 border border-slate-200 rounded-2xl text-center text-slate-500 font-medium">
+                    No policy violations matching current filters.
+                  </div>
+                ) : (
+                  <div className="overflow-x-auto border border-slate-200 rounded-2xl shadow-sm">
                     <table className="w-full text-left border-collapse text-sm text-slate-600">
                       <thead>
-                        <tr className="bg-[#1e293b] text-white">
-                          <th className="p-3.5 font-semibold rounded-tl-lg">Employee</th>
-                          <th className="p-3.5 font-semibold">Rule</th>
-                          <th className="p-3.5 font-semibold rounded-tr-lg text-center">Risk</th>
+                        <tr className="bg-slate-900 text-white">
+                          <th className="p-4 font-semibold rounded-tl-xl w-24">Employee</th>
+                          <th className="p-4 font-semibold w-28">Department</th>
+                          <th className="p-4 font-semibold">Rule Violated</th>
+                          <th className="p-4 font-semibold w-24 text-center">Severity</th>
+                          <th className="p-4 font-semibold w-32 text-center">Status</th>
+                          <th className="p-4 font-semibold rounded-tr-xl w-24 text-center no-print">Actions</th>
                         </tr>
                       </thead>
-                      <tbody>
-                        {violations.slice(0, 3).map((v, i) => (
-                          <tr key={v.id || i} className="border-b border-slate-100 last:border-0 hover:bg-slate-50">
-                            <td className="p-3.5 font-bold text-slate-800 border-r border-slate-100/50">{v.employee || 'Unknown'}</td>
-                            <td className="p-3.5 border-r border-slate-100/50 text-xs font-medium">{v.rule_violated}</td>
-                            <td className="p-3.5 text-center font-semibold">{v.severity}</td>
-                          </tr>
-                        ))}
+                      <tbody className="divide-y divide-slate-100">
+                        {sortedViolations.map((v, i) => {
+                          const sev = (v.severity || 'LOW').toUpperCase();
+                          const sevBadges = {
+                            CRITICAL: 'bg-red-100 text-red-800 border-red-200',
+                            HIGH: 'bg-orange-100 text-orange-800 border-orange-200',
+                            MEDIUM: 'bg-amber-100 text-amber-800 border-amber-200',
+                            LOW: 'bg-emerald-100 text-emerald-800 border-emerald-200'
+                          };
+
+                          const stat = (v.status || 'OPEN').toUpperCase();
+                          const statusBadges = {
+                            OPEN: 'bg-red-50 text-red-600 border-red-200',
+                            IN_PROGRESS: 'bg-amber-50 text-amber-600 border-amber-200',
+                            MITIGATED: 'bg-emerald-50 text-emerald-600 border-emerald-200',
+                            FALSE_POSITIVE: 'bg-slate-100 text-slate-600 border-slate-200'
+                          };
+
+                          return (
+                            <tr key={v.id || i} className="hover:bg-slate-50/80 transition-colors">
+                              <td className="p-4 font-bold text-slate-800">{v.employee || 'Unknown'}</td>
+                              <td className="p-4 font-medium text-slate-600">{v.department || 'Unknown'}</td>
+                              <td className="p-4">
+                                <div className="font-semibold text-slate-800">{v.rule_violated}</div>
+                                <div className="text-slate-400 text-xs mt-0.5 line-clamp-1">{v.explanation}</div>
+                              </td>
+                              <td className="p-4 text-center">
+                                <span className={`px-2.5 py-1 rounded-full text-xs font-bold border ${
+                                  sevBadges[sev] || 'bg-slate-100 text-slate-800 border-slate-200'
+                                }`}>
+                                  {sev}
+                                </span>
+                              </td>
+                              <td className="p-4 text-center">
+                                <span className={`px-2.5 py-1 rounded-full text-xs font-bold border uppercase ${
+                                  statusBadges[stat] || 'bg-slate-100 text-slate-800 border-slate-200'
+                                }`}>
+                                  {stat.replace('_', ' ')}
+                                </span>
+                              </td>
+                              <td className="p-4 text-center no-print">
+                                <button
+                                  onClick={() => {
+                                    setSelectedViolation(v);
+                                    setMitigationStatus(v.status || 'OPEN');
+                                    setMitigationNotes(v.mitigation_notes || '');
+                                  }}
+                                  className="text-xs font-bold text-indigo-600 bg-indigo-50 border border-indigo-100 hover:bg-indigo-100 px-3 py-1.5 rounded-lg transition-colors cursor-pointer inline-flex items-center gap-1"
+                                >
+                                  Manage
+                                </button>
+                              </td>
+                            </tr>
+                          );
+                        })}
                       </tbody>
                     </table>
                   </div>
-                  {violations.length > 3 && !showAllViolations && (
-                    <div className="text-right mt-4 no-print">
-                      <button 
-                        onClick={() => setShowAllViolations(true)}
-                        className="text-sm text-[#4f46e5] font-bold cursor-pointer hover:underline flex items-center justify-end gap-1 ml-auto"
-                      >
-                        View all {violations.length} violations <ArrowRight className="w-4 h-4" />
-                      </button>
-                    </div>
-                  )}
-                </div>
+                )}
               </div>
-              
-              {showAllViolations && (
-                <div className="mt-16 pt-8 border-t border-slate-200">
-                  <div className="flex flex-col md:flex-row justify-between items-stretch md:items-center gap-4 mb-8">
-                    <h2 className="text-3xl font-extrabold text-[#1e293b] flex items-center gap-3">
-                      <AlertTriangle className="text-amber-500 w-8 h-8" /> All Violations Detail
-                    </h2>
-                    <div className="flex flex-col sm:flex-row gap-3 no-print">
-                      <div className="relative">
-                        <Search className="w-4 h-4 text-slate-400 absolute left-3 top-3.5" />
-                        <input type="text" placeholder="Search logs..." value={searchQuery} onChange={(e) => setSearchQuery(e.target.value)} className="w-full sm:w-64 pl-10 pr-4 py-2.5 bg-white border border-slate-300 rounded-xl text-sm focus:ring-2 focus:ring-indigo-500" />
-                      </div>
-                      <div className="flex items-center gap-1.5 p-1 bg-slate-100 rounded-xl border border-slate-200">
-                        {['ALL', 'CRITICAL', 'HIGH', 'MEDIUM', 'LOW'].map((level) => (
-                          <button
-                            key={level} onClick={() => setFilterSeverity(level)}
-                            className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer ${filterSeverity === level ? 'bg-white text-indigo-600 shadow-sm border border-slate-200' : 'text-slate-500 hover:bg-slate-200/50'}`}
-                          >
-                            {level}
-                          </button>
-                        ))}
-                      </div>
-                    </div>
-                  </div>
-
-                  {filteredData.length === 0 ? (
-                    <div className="p-12 bg-slate-50 border border-slate-200 rounded-2xl text-center text-slate-500">No violations match criteria.</div>
-                  ) : (
-                    <div className="space-y-6">
-                      {filteredData.map((item, index) => {
-                        const sev = item.severity ? item.severity.toUpperCase() : 'UNKNOWN';
-                        const sevColors = { CRITICAL: 'bg-red-100 text-red-800', HIGH: 'bg-orange-100 text-orange-800', MEDIUM: 'bg-amber-100 text-amber-800', LOW: 'bg-emerald-100 text-emerald-800' };
-                        return (
-                          <div key={item.id || index} className="bg-white p-6 md:p-8 rounded-2xl border border-slate-200 shadow-sm flex flex-col md:flex-row gap-8">
-                            <div className="space-y-4 flex-1">
-                              <div className="flex gap-3">
-                                <span className={`px-3 py-1 rounded-full text-xs font-bold border ${sevColors[sev] || 'bg-slate-100 text-slate-800'}`}>{sev} SEVERITY</span>
-                                <span className="text-sm font-semibold text-indigo-600 bg-indigo-50 px-3 py-1 rounded-full">Dept: {item.department || 'Unknown'} | Emp: {item.employee || 'Unknown'}</span>
-                              </div>
-                              <h3 className="font-extrabold text-xl text-[#1e293b]">{item.rule_violated}</h3>
-                              <div className="bg-slate-50 p-4 rounded-xl border border-slate-100 font-mono text-sm text-slate-700">
-                                <strong className="font-sans block mb-1">Log Evidence:</strong> {item.log_entry}
-                              </div>
-                              <p className="text-sm text-slate-600"><strong className="text-slate-800">Analysis:</strong> {item.explanation}</p>
-                            </div>
-                            <div className="md:w-80 bg-slate-50/50 p-6 rounded-2xl border border-slate-200 flex flex-col justify-center">
-                              <span className="text-xs text-indigo-600 font-extrabold uppercase mb-3"><Sparkles className="w-4 h-4 inline mr-1" /> Recommended Action</span>
-                              <p className="text-sm text-slate-700 font-medium">{item.recommendation}</p>
-                            </div>
-                          </div>
-                        );
-                      })}
-                    </div>
-                  )}
-                </div>
-              )}
 
             </div>
           </div>
         )}
-        
       </div>
+
+      {/* MITIGATION DETAILS MODAL / DRAWER */}
+      {selectedViolation && (
+        <div className="fixed inset-0 bg-[#0f172a]/70 backdrop-blur-sm z-50 flex items-center justify-center p-4 overflow-y-auto animate-in fade-in duration-200 text-slate-800">
+          <div className="bg-white rounded-3xl border border-slate-200 max-w-2xl w-full shadow-2xl overflow-hidden flex flex-col max-h-[90vh]">
+            
+            {/* Modal Header */}
+            <div className="bg-[#1e293b] text-white p-6 flex justify-between items-center">
+              <div>
+                <span className="text-xs font-extrabold tracking-widest text-indigo-300 uppercase block mb-1">
+                  Violation Audit Registry #{selectedViolation.id}
+                </span>
+                <h3 className="text-xl font-bold">Manage Compliance Status</h3>
+              </div>
+              <button 
+                onClick={() => setSelectedViolation(null)}
+                className="text-slate-400 hover:text-white p-2 rounded-xl hover:bg-slate-800 transition-colors cursor-pointer"
+              >
+                <ArrowLeft className="w-5 h-5" />
+              </button>
+            </div>
+
+            {/* Modal Body */}
+            <div className="p-6 md:p-8 space-y-6 overflow-y-auto">
+              
+              {/* Basic Meta Grid */}
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <span className="text-xs text-slate-400 block mb-1">Employee</span>
+                  <span className="font-bold bg-slate-50 px-3 py-2 rounded-lg border border-slate-200 text-slate-800 block text-sm">
+                    {selectedViolation.employee || 'Unknown'}
+                  </span>
+                </div>
+                <div>
+                  <span className="text-xs text-slate-400 block mb-1">Department</span>
+                  <span className="font-bold bg-slate-50 px-3 py-2 rounded-lg border border-slate-200 text-slate-800 block text-sm">
+                    {selectedViolation.department || 'Unknown'}
+                  </span>
+                </div>
+              </div>
+
+              {/* Severity & Rule */}
+              <div>
+                <span className="text-xs text-slate-400 block mb-1">Policy Rule Violated</span>
+                <div className="bg-slate-50 p-4 rounded-xl border border-slate-200">
+                  <div className="flex gap-2 items-center mb-2">
+                    <span className={`px-2.5 py-0.5 rounded-full text-xs font-bold border uppercase ${(selectedViolation.severity || 'low').toUpperCase() === 'CRITICAL' ? 'bg-red-100 text-red-800 border-red-200' : (selectedViolation.severity || 'low').toUpperCase() === 'HIGH' ? 'bg-orange-100 text-orange-800 border-orange-200' : (selectedViolation.severity || 'low').toUpperCase() === 'MEDIUM' ? 'bg-amber-100 text-amber-800 border-amber-200' : 'bg-emerald-100 text-emerald-800 border-emerald-200'}`}>
+                      {selectedViolation.severity} Severity
+                    </span>
+                  </div>
+                  <h4 className="font-extrabold text-slate-800">{selectedViolation.rule_violated}</h4>
+                </div>
+              </div>
+
+              {/* Log Evidence */}
+              <div>
+                <span className="text-xs text-slate-400 block mb-1">System Log Evidence</span>
+                <pre className="bg-[#0f172a] text-[#38bdf8] p-4 rounded-xl border border-slate-800 text-xs font-mono whitespace-pre-wrap break-all max-h-32 overflow-y-auto">
+                  {selectedViolation.log_entry}
+                </pre>
+              </div>
+
+              {/* AI Explanation & Recommendation */}
+              <div className="space-y-4">
+                <div>
+                  <span className="text-xs text-slate-400 block mb-1">Explanation</span>
+                  <p className="text-sm leading-relaxed text-slate-600 bg-slate-50 p-3.5 rounded-xl border border-slate-100">
+                    {selectedViolation.explanation}
+                  </p>
+                </div>
+                <div>
+                  <span className="text-xs text-slate-400 block mb-1">Compliance Recommendation</span>
+                  <p className="text-sm leading-relaxed text-slate-700 bg-indigo-50/50 p-3.5 rounded-xl border border-indigo-100/50 font-medium">
+                    {selectedViolation.recommendation}
+                  </p>
+                </div>
+              </div>
+
+              {/* Resolution Workflow */}
+              <div className="border-t border-slate-200 pt-6 space-y-4">
+                <h4 className="font-bold text-slate-800">Resolution & Auditor Logs</h4>
+                
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div>
+                    <label className="block text-xs font-bold text-slate-500 mb-1.5 uppercase">Auditor Status</label>
+                    <select
+                      value={mitigationStatus}
+                      onChange={(e) => setMitigationStatus(e.target.value)}
+                      className="w-full bg-slate-50 border border-slate-300 rounded-xl px-4 py-2.5 outline-none focus:ring-2 focus:ring-indigo-500 cursor-pointer font-bold text-sm"
+                    >
+                      <option value="OPEN">🔴 Open / Unresolved</option>
+                      <option value="IN_PROGRESS">🟡 In Progress</option>
+                      <option value="MITIGATED">🟢 Mitigated / Resolved</option>
+                      <option value="FALSE_POSITIVE">⚪ False Positive</option>
+                    </select>
+                  </div>
+                </div>
+
+                <div>
+                  <label className="block text-xs font-bold text-slate-500 mb-1.5 uppercase">Mitigation Log & Notes</label>
+                  <textarea
+                    rows="3"
+                    value={mitigationNotes}
+                    onChange={(e) => setMitigationNotes(e.target.value)}
+                    placeholder="Document training reschedule, security policy changes, or reasoning behind false positive status..."
+                    className="w-full bg-slate-50 border border-slate-300 rounded-xl p-4 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 text-slate-800"
+                  />
+                </div>
+              </div>
+
+            </div>
+
+            {/* Modal Actions */}
+            <div className="bg-slate-50 px-6 py-4 flex justify-end gap-3 border-t border-slate-200/50">
+              <button 
+                onClick={() => setSelectedViolation(null)}
+                className="px-5 py-2.5 bg-white border border-slate-300 hover:bg-slate-100 rounded-xl text-sm font-semibold transition-colors cursor-pointer text-slate-600"
+              >
+                Close
+              </button>
+              <button 
+                onClick={handleSaveMitigation}
+                disabled={savingMitigation}
+                className="px-6 py-2.5 bg-[#4f46e5] hover:bg-[#4338ca] text-white rounded-xl text-sm font-bold shadow-lg shadow-indigo-500/20 transition-all flex items-center gap-2 cursor-pointer disabled:opacity-50"
+              >
+                {savingMitigation ? (
+                  <><Loader2 className="w-4.5 h-4.5 animate-spin" /> Saving...</>
+                ) : (
+                  <>Save Auditor Updates</>
+                )}
+              </button>
+            </div>
+
+          </div>
+        </div>
+      )}
     </div>
   );
 }
