@@ -5,28 +5,28 @@ const frameworks = ['SOC 2', 'ISO 27001', 'HIPAA', 'GDPR', 'EU AI Act', 'NIST']
 
 const auditRows = [
   {
-    control: 'AC-2 · Access reviews',
-    framework: 'SOC 2 CC6.1',
-    state: 'pass',
-    detail: '412 identities reconciled',
-  },
-  {
-    control: 'Model risk classification',
-    framework: 'EU AI Act Art. 9',
-    state: 'review',
-    detail: '2 systems need reclassification',
-  },
-  {
-    control: 'Encryption at rest',
-    framework: 'ISO 27001 A.8.24',
-    state: 'pass',
-    detail: 'Evidence collected 4m ago',
-  },
-  {
-    control: 'Vendor DPA coverage',
-    framework: 'GDPR Art. 28',
+    control: 'Access Control',
+    framework: 'Policy 2.1 · Access Reviews',
     state: 'gap',
-    detail: '1 processor missing agreement',
+    detail: 'Unauthorized S3 resource sharing detected',
+  },
+  {
+    control: 'Data Protection',
+    framework: 'Policy 3.2 · API Keys Exposure',
+    state: 'gap',
+    detail: 'GitHub commit sk_live_...2ross exposed',
+  },
+  {
+    control: 'Employee Classification',
+    framework: 'Policy 4.3 · Training Schedule',
+    state: 'review',
+    detail: 'Employee Ross exceeds 60-day training buffer',
+  },
+  {
+    control: 'Working Hours',
+    framework: 'Policy 5.1 · Shift Allocation',
+    state: 'pass',
+    detail: 'All shifts reconcile with timecard limits',
   },
 ]
 
@@ -61,9 +61,9 @@ export default function HeroSection({ onGetStarted }) {
           </h1>
 
           <p className="mt-6 max-w-2xl text-base leading-relaxed text-muted-foreground text-pretty md:text-lg">
-            Auditra reads your policies, controls, and system evidence, maps
-            them to every framework you carry, and surfaces the exact gaps an
-            auditor will find — before they do.
+            AI Compliance Auditor scans corporate policies and raw system logs, maps 
+            them to core organizational guidelines, and surfaces severity gaps 
+            and violations instantly using advanced Gemini reasoning.
           </p>
 
           <div className="mt-9 flex flex-col items-center gap-4 sm:flex-row">

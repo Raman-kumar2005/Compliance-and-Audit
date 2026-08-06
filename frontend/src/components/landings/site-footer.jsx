@@ -8,13 +8,13 @@ export default function SiteFooter({ onGetStarted }) {
           <span className="flex size-7 items-center justify-center rounded-lg bg-primary/15 ring-1 ring-primary/30">
             <ShieldCheck className="size-3.5 text-primary" aria-hidden="true" />
           </span>
-          <span className="text-sm font-semibold tracking-tight">Auditra</span>
+          <span className="text-sm font-semibold tracking-tight">AI Compliance Auditor</span>
         </div>
         <p className="text-xs text-muted-foreground">
           AI compliance auditing for regulated enterprises.
         </p>
         <p className="text-xs text-muted-foreground">
-          &copy; {new Date().getFullYear()} Auditra, Inc.
+          &copy; {new Date().getFullYear()} AI Compliance Auditor, Inc.
         </p>
       </div>
     </footer>

@@ -8,7 +8,7 @@ import pandas as pd
 from pathlib import Path
 from dotenv import load_dotenv
 from pypdf import PdfReader
-from fastapi import FastAPI, UploadFile, File, HTTPException, status, Query
+from fastapi import FastAPI, UploadFile, File, Form, HTTPException, status, Query
 from fastapi.middleware.cors import CORSMiddleware
 from google import genai
 from google.genai import types
@@ -115,7 +115,7 @@ def make_violation_fingerprint(v: dict) -> str:
     return hashlib.md5(raw_key.encode('utf-8')).hexdigest()
 
 
-def send_violation_alert(rule, severity, log_evidence):
+def send_violation_alert(rule, severity, log_evidence, recipient_email):
     try:
         subject = f"🚨 URGENT: {severity} Policy Violation Detected"
         body = f"""
@@ -129,7 +129,7 @@ def send_violation_alert(rule, severity, log_evidence):
         """
         
         print("\n" + "="*50)
-        print(f"✅ [MOCK EMAIL SENT TO {MANAGER_EMAIL}]")
+        print(f"✅ [MOCK EMAIL SENT TO {recipient_email}]")
         print(f"Subject: {subject}")
         print(body)
         print("="*50 + "\n")
@@ -375,8 +375,23 @@ def update_violation(audit_id: str, violation_id: int, update_data: ViolationUpd
 @app.post("/api/audit")
 def execute_audit(
     policy_file: UploadFile = File(...),
-    log_file: UploadFile = File(...)
+    log_file: UploadFile = File(...),
+    hr_email: str = Form(None)
 ):
+    # Validate hr_email presence and format
+    if not hr_email or not hr_email.strip():
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail="HR corporate email is required."
+        )
+    recipient = hr_email.strip()
+    import re
+    if not re.match(r"^[^\s@]+@[^\s@]+\.[^\s@]+$", recipient):
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail="Invalid HR corporate email address format."
+        )
+
     api_key = os.environ.get("GEMINI_API_KEY")
     if not api_key:
         raise HTTPException(
@@ -441,14 +456,25 @@ INSTRUCTIONS:
 
         # 5. Email Alert Trigger Logic for High/Critical Violations
         violations = audit_result.get("violations", [])
+        high_critical_count = 0
         for violation in violations:
             sev = str(violation.get("severity", "")).upper()
             if sev in ["HIGH", "CRITICAL"]:
+                high_critical_count += 1
                 send_violation_alert(
                     rule=violation.get("rule_violated", "Unknown Rule"),
                     severity=sev,
-                    log_evidence=violation.get("log_entry", "See Dashboard for details")
+                    log_evidence=violation.get("log_entry", "See Dashboard for details"),
+                    recipient_email=recipient
                 )
+
+        alert_triggered = high_critical_count > 0
+        alert_info = {
+            "triggered": alert_triggered,
+            "recipient": recipient,
+            "violation_count": high_critical_count,
+            "message": f"Mock email alert sent to {recipient}" if alert_triggered else "No critical or high violations found. No email alert triggered."
+        }
 
         # 6. Save audit record with metadata to history
         record_id = str(uuid.uuid4())
@@ -467,7 +493,8 @@ INSTRUCTIONS:
             "policy_filename": policy_file.filename,
             "log_filename": log_file.filename,
             "metrics": audit_result.get("metrics", {}),
-            "violations": violations
+            "violations": violations,
+            "alert": alert_info
         }
         
         save_to_history(audit_record)

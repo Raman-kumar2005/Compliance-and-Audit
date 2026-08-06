@@ -1,27 +1,27 @@
 const steps = [
   {
     number: '01',
-    title: 'Connect your systems',
-    body: 'Grant read-only access to cloud, identity, code, and ticketing tools. Auditra builds an inventory of controls, owners, and AI systems in minutes.',
-    meta: 'Read-only · SSO · no agents',
+    title: 'Upload corporate documents & logs',
+    body: 'Upload security policy guidelines alongside raw server logs, authentication records, or timecards to begin evaluation.',
+    meta: 'PDF policy uploads · JSON/CSV log drops · demo simulation',
   },
   {
     number: '02',
-    title: 'Map frameworks once',
-    body: 'Select the frameworks in scope. The engine aligns each requirement to existing controls and highlights what has no coverage at all.',
-    meta: 'SOC 2 · ISO 27001 · HIPAA · GDPR · EU AI Act',
+    title: 'AI reasoning engine scans content',
+    body: 'Our Gemini-powered compliance engine parses logs in real-time, mapping entries against corporate guidelines to locate gaps.',
+    meta: 'Gemini reasoning · automatic mapping · zero config coding',
   },
   {
     number: '03',
-    title: 'Audit runs continuously',
-    body: 'Checks execute on schedule, evidence is refreshed automatically, and findings are scored by audit impact as your environment changes.',
-    meta: 'Drift detection · severity scoring',
+    title: 'Assess risk scores & summaries',
+    body: 'Review your visual compliance breakdown card, overall risk gauge, and read plain-English executive summary insight panels.',
+    meta: '0-100 radial risk gauges · 5 core compliance pillars',
   },
   {
     number: '04',
-    title: 'Export the evidence package',
-    body: 'Hand auditors a complete, timestamped package with control narratives, source citations, and a full review trail attached.',
-    meta: 'PDF · CSV · JSON',
+    title: 'Drill down & resolve alerts',
+    body: 'Click any violation to inspect code blocks of raw log evidence, log mitigation updates, and instantly generate PDF audit reports.',
+    meta: 'Drill-Down Modal · auditor note signatures · PDF export templates',
   },
 ]
 

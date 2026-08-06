@@ -1,51 +1,51 @@
 import {
-  Bot,
-  GitCompareArrows,
+  Sparkles,
   Layers,
-  Radar,
-  ScrollText,
+  Search,
   ShieldAlert,
+  GitCompare,
+  ScrollText,
 } from 'lucide-react'
 
 const features = [
   {
-    icon: Radar,
-    title: 'Continuous control monitoring',
-    body: 'Auditra re-tests every mapped control on a schedule and flags drift the moment configuration, access, or policy changes.',
+    icon: Sparkles,
+    title: 'Executive AI Summary Box',
+    body: 'Translates thousands of raw logs into standard, plain-English executive summaries listing the biggest risk, the root cause, and required action in seconds.',
     span: true,
     points: [
-      'Read-only connections to cloud, identity, and ticketing systems',
-      'Deterministic checks paired with AI reasoning on unstructured evidence',
+      'Identifies critical exfiltration risks and credentials exposure',
+      'Recommends immediate priority actions to compliance leaders',
     ],
   },
   {
-    icon: Bot,
-    title: 'AI evidence review',
-    body: 'Policies, DPAs, and reports are parsed, summarized, and matched to the requirement they actually satisfy — with citations.',
+    icon: Layers,
+    title: 'Framework Category Breakdown',
+    body: 'Automatically categorizes compliance scores across 5 core compliance pillars: Access Control, Data Protection, Employee Classification, Financial Approval, and Working Hours.',
   },
   {
-    icon: GitCompareArrows,
-    title: 'Cross-framework mapping',
-    body: 'Answer a control once and Auditra applies it across SOC 2, ISO 27001, HIPAA, and the EU AI Act automatically.',
+    icon: Search,
+    title: 'Interactive Drill-Down Console',
+    body: 'Inspect raw log evidence, policy descriptions, AI explanations, and record resolution notes in a dark terminal details view.',
   },
   {
     icon: ShieldAlert,
-    title: 'Gap severity scoring',
-    body: 'Every finding is ranked by audit impact and blast radius, so remediation follows real risk instead of ticket order.',
+    title: 'Policy Breach Prioritization',
+    body: 'Ranks and aggregates policy rules most frequently broken, helping security and audit teams see what needs attention first.',
   },
   {
-    icon: Layers,
-    title: 'AI system inventory',
-    body: 'Models, prompts, and data flows are catalogued and risk-classified for emerging AI governance obligations.',
+    icon: GitCompare,
+    title: 'Role-Based Access Control Portals',
+    body: 'Provides separate, URL-synced dashboards for Employees (personal compliance rating, tasks checklist) and HR Auditors (full management console).',
   },
   {
     icon: ScrollText,
-    title: 'Audit-ready reporting',
-    body: 'Export a defensible evidence package with control narratives, timestamps, and a complete review trail.',
+    title: 'Audit-ready PDF Reporting',
+    body: 'Generates polished corporate compliance reports, summary indices, and historical trend comparisons with a single click.',
     span: true,
     points: [
-      'Immutable history of every check, override, and approval',
-      'Auditor-friendly exports in PDF, CSV, and structured JSON',
+      'Compare audit logs side-by-side to review risk delta',
+      'Trace 6-week compliance progress trend sparklines',
     ],
   },
 ]
@@ -61,14 +61,14 @@ export default function FeaturesSection({ onGetStarted }) {
       <div className="relative mx-auto w-full max-w-6xl px-6">
         <div className="max-w-2xl">
           <p className="font-mono text-xs tracking-[0.18em] text-primary uppercase">
-            The solution
+            The platform
           </p>
           <h2 className="mt-4 text-3xl leading-tight font-semibold tracking-tight text-balance md:text-4xl">
-            One audit engine for every framework you carry
+            Advanced Audit Reasoning & Analytics Portal
           </h2>
           <p className="mt-5 text-base leading-relaxed text-muted-foreground text-pretty">
-            Auditra replaces the annual scramble with an always-on audit that
-            reasons over your real systems and documents — and shows its work.
+            AI Compliance Auditor transforms raw server logs and security policy documents 
+            into actionable insights, automated compliance charts, and developer-friendly mitigations.
           </p>
         </div>
 

@@ -1,10 +1,15 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import AuditComparison from './components/AuditComparison';
+import RiskScoreCard from './components/RiskScoreCard';
+import ComplianceBreakdownCard from './components/ComplianceBreakdownCard';
+import AISummaryBox from './components/AISummaryBox';
+import DrillDownModal from './components/DrillDownModal';
+import FrequentPoliciesCard from './components/FrequentPoliciesCard';
 import { 
   Upload, AlertTriangle, ShieldAlert, FileText, Loader2, 
   Sparkles, Download, Search, 
   ArrowRight, FileSpreadsheet, History, PlusCircle, ArrowLeft, Clock, LogOut, GitCompare,
-  ArrowUpDown
+  ArrowUpDown, User
 } from 'lucide-react';
 import axios from 'axios';
 import { 
@@ -41,7 +46,7 @@ const RISK_COLORS = {
   Critical: '#ef4444'  
 };
 
-export default function Dashboard({ onLogout }) {
+export default function Dashboard({ user, onLogout }) {
   const [activeTab, setActiveTab] = useState('new_audit'); // 'new_audit', 'history', 'compare', 'report'
   const [historyData, setHistoryData] = useState([]);
   const [historyLoading, setHistoryLoading] = useState(false);
@@ -64,6 +69,7 @@ export default function Dashboard({ onLogout }) {
   const [savingMitigation, setSavingMitigation] = useState(false);
   const [csvExporting, setCsvExporting] = useState(false);
   const [pdfGenerating, setPdfGenerating] = useState(false);
+  const [simulatedState, setSimulatedState] = useState('actual'); // 'actual' | 'high-risk'
 
   const BACKEND_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000/api';
 
@@ -92,11 +98,13 @@ export default function Dashboard({ onLogout }) {
     }
     setError('');
     setLoading(true);
-    setShowAllViolations(false);
 
     const formData = new FormData();
     formData.append('policy_file', policyFile);
     formData.append('log_file', logFile);
+    if (user?.email) {
+      formData.append('hr_email', user.email);
+    }
 
     try {
       const response = await axios.post(`${BACKEND_URL}/audit`, formData);
@@ -258,8 +266,70 @@ export default function Dashboard({ onLogout }) {
     }
   };
 
-  const violations = auditData?.violations || [];
-  const metrics = auditData?.metrics;
+  const SIMULATED_HIGH_RISK = useMemo(() => ({
+    metrics: {
+      compliance_score: 18,
+      risk_distribution: { Low: 2, Medium: 5, High: 14, Critical: 28 },
+      compliance_trend: [71, 74, 76, 79, 81, 18],
+      violations_by_department: { Finance: 15, HR: 8, IT: 22, Sales: 4, Ops: 12 }
+    },
+    violations: [
+      {
+        id: "sim-101",
+        employee: "E-9910",
+        department: "IT",
+        rule_violated: "Policy 2.1 - Data Exfiltration Controls",
+        log_entry: "Employee ID: E-9910, Action: Bulk Download Customer Database, Size: 4.8 GB, Exfiltration Warning Fired",
+        severity: "Critical",
+        explanation: "Employee E-9910 downloaded 4.8 GB of sensitive customer database. Unauthorised bulk exfiltration.",
+        recommendation: "Immediately revoke database access and suspend account credentials.",
+        status: "OPEN"
+      },
+      {
+        id: "sim-102",
+        employee: "E-8732",
+        department: "Finance",
+        rule_violated: "Policy 1.4 - Unauthenticated Financial Transactions",
+        log_entry: "Session IP: 192.168.1.99, Action: Wire Transfer Approve ($250,000), Auth: MFA Bypassed",
+        severity: "High",
+        explanation: "A financial wire transfer approval of $250,000 was executed without passing mandatory Multi-Factor Authentication.",
+        recommendation: "Flag session IP and enforce immediate mandatory token re-verification.",
+        status: "OPEN"
+      },
+      {
+        id: "sim-103",
+        employee: "E-4421",
+        department: "IT",
+        rule_violated: "Policy 3.2 - Open Access Key in Version Control",
+        log_entry: "GitHub Push: Repo 'ai-model-serving', File: 'config.json', Secret: 'sk_live_...4f2a'",
+        severity: "High",
+        explanation: "Production OpenAI API secret key sk_live_...4f2a leaked in a public GitHub repository commit.",
+        recommendation: "Rotate the compromised secret immediately and scan repositories for further secrets.",
+        status: "OPEN"
+      },
+      {
+        id: "sim-104",
+        employee: "E-1044",
+        department: "HR",
+        rule_violated: "Policy 4.1 - Unauthorised PII Access",
+        log_entry: "Employee ID: E-1044, Query: SELECT * FROM candidates WHERE salary > 120000",
+        severity: "Medium",
+        explanation: "Unauthorised direct query on employee salary database without business justification.",
+        recommendation: "Enforce role-based access control and restrict salary tables to HR directors.",
+        status: "OPEN"
+      }
+    ]
+  }), []);
+
+  const activeAuditData = useMemo(() => {
+    if (simulatedState === 'high-risk') {
+      return SIMULATED_HIGH_RISK;
+    }
+    return auditData || MOCK_RESULTS;
+  }, [simulatedState, auditData]);
+
+  const violations = activeAuditData?.violations || [];
+  const metrics = activeAuditData?.metrics;
 
   const SEVERITY_WEIGHT = {
     CRITICAL: 4, HIGH: 3, MEDIUM: 2, LOW: 1,
@@ -348,10 +418,19 @@ export default function Dashboard({ onLogout }) {
         <div className="max-w-7xl mx-auto px-6 md:px-12 py-4 flex items-center justify-between">
           <div className="flex items-center gap-3">
             <ShieldAlert className="w-8 h-8 text-indigo-500" /> 
-            <span className="text-xl font-bold text-white tracking-tight">AI Auditor</span>
+            <div>
+              <span className="text-xl font-bold text-white tracking-tight block">AI Auditor</span>
+              <span className="text-[10px] text-slate-500 font-semibold uppercase tracking-wider block -mt-1">HR Operations</span>
+            </div>
           </div>
           
           <div className="flex items-center gap-4">
+            {/* HR auditor info badge */}
+            <div className="hidden lg:flex items-center gap-2 px-3 py-1.5 rounded-xl bg-[#0f172a] border border-slate-800 text-xs font-semibold text-slate-300">
+              <User className="w-3.5 h-3.5 text-purple-400" />
+              <span>{user?.email || 'hr.auditor@company.com'}</span>
+              <span className="text-[9px] bg-purple-500/15 text-purple-400 font-extrabold px-1.5 py-0.5 rounded border border-purple-500/25 uppercase">Auditor</span>
+            </div>
             <div className="flex bg-[#0f172a] rounded-xl p-1 shadow-inner border border-slate-800">
               <button 
                 onClick={() => { setActiveTab('new_audit'); setAuditData(null); }}
@@ -580,34 +659,96 @@ export default function Dashboard({ onLogout }) {
                 </button>
               </div>
 
-              <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-                {/* Score & Pie */}
-                <div className="flex flex-col sm:flex-row gap-6 justify-between items-center bg-white p-6 rounded-2xl shadow-sm border border-slate-200">
-                  <div className="bg-[#1e293b] text-white p-6 rounded-xl w-full sm:w-1/2 h-[220px] flex flex-col justify-between shadow-lg">
-                    <h3 className="text-xs font-bold tracking-widest uppercase text-slate-400">COMPLIANCE<br/>SCORE</h3>
-                    <div className="text-6xl font-extrabold my-2">{metrics?.compliance_score || 0}</div>
-                    <div className="text-sm font-semibold text-slate-300">
-                      {metrics?.compliance_score >= 80 ? 'Low Risk - Org-wide' : 'High Risk - Org-wide'}
+              {/* HACKATHON COMPLIANCE SIMULATOR BANNER */}
+              <div className="mb-6 p-4 bg-[#090d16] rounded-2xl border border-slate-800 flex flex-col md:flex-row justify-between items-center gap-4 shadow-lg shadow-slate-950/20 no-print">
+                <div className="flex items-center gap-3">
+                  <div className="bg-indigo-500/10 p-2.5 rounded-xl border border-indigo-500/30 text-indigo-400">
+                    <Sparkles className="w-5 h-5 text-indigo-400" />
+                  </div>
+                  <div>
+                    <h4 className="text-sm font-bold text-white">Compliance & Risk Simulator</h4>
+                    <p className="text-[11px] text-slate-400 font-medium">Toggle simulated threat profiles to test system alerts, color changes, and sparkline trends live.</p>
+                  </div>
+                </div>
+                <div className="flex gap-2 w-full md:w-auto">
+                  <button 
+                    onClick={() => setSimulatedState('actual')}
+                    className={`flex-1 md:flex-initial px-4 py-2 rounded-xl text-xs font-bold transition-all cursor-pointer border ${
+                      simulatedState === 'actual' 
+                        ? "bg-emerald-600 border-emerald-500 text-white shadow-lg shadow-emerald-500/25"
+                        : "bg-slate-900 border-slate-800 text-slate-400 hover:text-slate-200"
+                    }`}
+                  >
+                    Actual Report ({auditData?.metrics?.compliance_score || MOCK_RESULTS.metrics.compliance_score}% Compliance)
+                  </button>
+                  <button 
+                    onClick={() => setSimulatedState('high-risk')}
+                    className={`flex-1 md:flex-initial px-4 py-2 rounded-xl text-xs font-bold transition-all cursor-pointer border ${
+                      simulatedState === 'high-risk' 
+                        ? "bg-red-600 border-red-500 text-white shadow-lg shadow-red-500/25"
+                        : "bg-slate-900 border-slate-800 text-slate-400 hover:text-slate-200"
+                    }`}
+                  >
+                    Simulate Threat Level (High Risk)
+                  </button>
+                </div>
+              </div>
+
+              {/* MOCK EMAIL ALERTS NOTIFICATION PANEL */}
+              {auditData?.alert && (
+                <div className="mb-6 p-5 rounded-2xl bg-[#090d16]/95 border border-slate-800 text-slate-100 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 shadow-lg shadow-slate-950/20 no-print">
+                  <div className="flex items-center gap-3.5">
+                    <div className={`p-3 rounded-xl border flex items-center justify-center ${
+                      auditData.alert.triggered 
+                        ? "bg-red-500/10 border-red-500/30 text-red-400" 
+                        : "bg-emerald-500/10 border-emerald-500/30 text-emerald-400"
+                    }`}>
+                      <ShieldAlert className="w-5 h-5" />
+                    </div>
+                    <div>
+                      <div className="flex items-center gap-2">
+                        <h4 className="text-xs font-extrabold uppercase tracking-wider text-slate-400">Security Alert Status</h4>
+                        <span className="text-[9px] bg-slate-800 text-indigo-400 font-extrabold px-1.5 py-0.5 rounded border border-slate-700 uppercase">Mock Email Demo</span>
+                      </div>
+                      <p className="text-sm font-extrabold text-white mt-1">{auditData.alert.message}</p>
+                      <p className="text-xs text-slate-400 mt-1">
+                        Recipient: <span className="font-semibold text-slate-200">{auditData.alert.recipient}</span> • Critical/High Violations Found: <span className="font-semibold text-slate-200">{auditData.alert.violation_count}</span>
+                      </p>
                     </div>
                   </div>
-                  <div className="w-full sm:w-1/2 flex flex-col items-center h-[220px] justify-center">
-                    <h3 className="text-sm font-bold text-slate-600 mb-2">Risk Distribution</h3>
-                    <div className="h-40 w-full relative">
-                      <ResponsiveContainer width="100%" height="100%">
-                        <PieChart>
-                          <Pie data={pieData} cx="50%" cy="50%" innerRadius={0} outerRadius={70} dataKey="value" stroke="none">
-                            {pieData.map((entry, index) => <Cell key={`cell-${index}`} fill={RISK_COLORS[entry.name]} />)}
-                          </Pie>
-                          <RechartsTooltip contentStyle={{ borderRadius: '12px', border: 'none', boxShadow: '0 10px 15px -3px rgb(0 0 0 / 0.1)' }} />
-                        </PieChart>
-                      </ResponsiveContainer>
-                    </div>
-                    <div className="flex gap-4 text-xs font-bold text-slate-50 mt-2 bg-slate-900/10 px-3 py-1 rounded-full border border-slate-200">
-                      <div className="flex items-center gap-1.5"><div className="w-2.5 h-2.5 bg-emerald-500 rounded-full"></div>Low</div>
-                      <div className="flex items-center gap-1.5"><div className="w-2.5 h-2.5 bg-amber-500 rounded-full"></div>Med</div>
-                      <div className="flex items-center gap-1.5"><div className="w-2.5 h-2.5 bg-orange-500 rounded-full"></div>High</div>
-                      <div className="flex items-center gap-1.5"><div className="w-2.5 h-2.5 bg-red-500 rounded-full"></div>Crit</div>
-                    </div>
+                  <div className="text-[10px] font-bold uppercase tracking-wider text-slate-400 bg-indigo-500/15 border border-indigo-500/25 px-3.5 py-2 rounded-xl self-stretch sm:self-auto flex items-center justify-center text-center animate-pulse">
+                    Mock Queue Active
+                  </div>
+                </div>
+              )}
+
+              {/* AI Insight Summary Panel */}
+              <div className="mb-6">
+                <AISummaryBox violations={violations} />
+              </div>
+
+              <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                {/* 1. Brand-New Modern Risk Score Card */}
+                <RiskScoreCard metrics={metrics} violations={violations} />
+
+                {/* 2. Standalone Risk Distribution Pie Chart */}
+                <div className="bg-white p-6 rounded-2xl shadow-sm border border-slate-200 flex flex-col items-center justify-center">
+                  <h3 className="text-sm font-bold text-slate-600 mb-2">Risk Distribution</h3>
+                  <div className="h-44 w-full relative">
+                    <ResponsiveContainer width="100%" height="100%">
+                      <PieChart>
+                        <Pie data={pieData} cx="50%" cy="50%" innerRadius={40} outerRadius={70} dataKey="value" stroke="none">
+                          {pieData.map((entry, index) => <Cell key={`cell-${index}`} fill={RISK_COLORS[entry.name]} />)}
+                        </Pie>
+                        <RechartsTooltip contentStyle={{ borderRadius: '12px', border: 'none', boxShadow: '0 10px 15px -3px rgb(0 0 0 / 0.1)' }} />
+                      </PieChart>
+                    </ResponsiveContainer>
+                  </div>
+                  <div className="flex gap-4 text-xs font-bold text-slate-700 mt-2 bg-slate-100 px-4 py-1.5 rounded-full border border-slate-200">
+                    <div className="flex items-center gap-1.5"><div className="w-2.5 h-2.5 bg-emerald-500 rounded-full"></div>Low</div>
+                    <div className="flex items-center gap-1.5"><div className="w-2.5 h-2.5 bg-amber-500 rounded-full"></div>Med</div>
+                    <div className="flex items-center gap-1.5"><div className="w-2.5 h-2.5 bg-orange-500 rounded-full"></div>High</div>
+                    <div className="flex items-center gap-1.5"><div className="w-2.5 h-2.5 bg-red-500 rounded-full"></div>Crit</div>
                   </div>
                 </div>
 
@@ -708,6 +849,9 @@ export default function Dashboard({ onLogout }) {
                     </button>
                   </div>
                 </div>
+
+                {/* 6. Compliance Framework Category Breakdown Card */}
+                <ComplianceBreakdownCard violations={violations} />
               </div>
 
               {/* ENTERPRISE VIOLATIONS EXPLORER & REGISTRY */}
@@ -784,107 +928,117 @@ export default function Dashboard({ onLogout }) {
                   </div>
                 </div>
 
-                {/* Severity Badge Selector */}
-                <div className="flex flex-wrap gap-1.5 mb-6 no-print">
-                  {['ALL', 'CRITICAL', 'HIGH', 'MEDIUM', 'LOW'].map((level) => {
-                    const isActive = filterSeverity === level;
-                    const count = getSeverityCount(level);
-                    return (
-                      <button
-                        key={level} 
-                        onClick={() => setFilterSeverity(level)}
-                        className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all cursor-pointer flex items-center gap-2 ${
-                          isActive 
-                            ? 'bg-slate-900 text-white shadow-sm' 
-                            : 'bg-slate-50 text-slate-600 hover:bg-slate-100 border border-slate-200'
-                        }`}
-                      >
-                        {level}
-                        <span className={`px-1.5 py-0.5 rounded-full text-[10px] ${
-                          isActive ? 'bg-indigo-500 text-white' : 'bg-slate-200 text-slate-600'
-                        }`}>{count}</span>
-                      </button>
-                    );
-                  })}
-                </div>
+                <div className="flex flex-col lg:flex-row gap-6">
+                  {/* Left Column: Severity Selector + Table */}
+                  <div className="flex-1 min-w-0">
+                    {/* Severity Badge Selector */}
+                    <div className="flex flex-wrap gap-1.5 mb-6 no-print">
+                      {['ALL', 'CRITICAL', 'HIGH', 'MEDIUM', 'LOW'].map((level) => {
+                        const isActive = filterSeverity === level;
+                        const count = getSeverityCount(level);
+                        return (
+                          <button
+                            key={level} 
+                            onClick={() => setFilterSeverity(level)}
+                            className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all cursor-pointer flex items-center gap-2 ${
+                              isActive 
+                                ? 'bg-slate-900 text-white shadow-sm' 
+                                : 'bg-slate-50 text-slate-600 hover:bg-slate-100 border border-slate-200'
+                            }`}
+                          >
+                            {level}
+                            <span className={`px-1.5 py-0.5 rounded-full text-[10px] ${
+                              isActive ? 'bg-indigo-500 text-white' : 'bg-slate-200 text-slate-600'
+                            }`}>{count}</span>
+                          </button>
+                        );
+                      })}
+                    </div>
 
-                {/* Table */}
-                {sortedViolations.length === 0 ? (
-                  <div className="p-12 bg-slate-50 border border-slate-200 rounded-2xl text-center text-slate-500 font-medium">
-                    No policy violations matching current filters.
-                  </div>
-                ) : (
-                  <div className="overflow-x-auto border border-slate-200 rounded-2xl shadow-sm">
-                    <table className="w-full text-left border-collapse text-sm text-slate-600">
-                      <thead>
-                        <tr className="bg-slate-900 text-white">
-                          <th className="p-4 font-semibold rounded-tl-xl w-24">Employee</th>
-                          <th className="p-4 font-semibold w-28">Department</th>
-                          <th className="p-4 font-semibold">Rule Violated</th>
-                          <th className="p-4 font-semibold w-24 text-center">Severity</th>
-                          <th className="p-4 font-semibold w-32 text-center">Status</th>
-                          <th className="p-4 font-semibold rounded-tr-xl w-24 text-center no-print">Actions</th>
-                        </tr>
-                      </thead>
-                      <tbody className="divide-y divide-slate-100">
-                        {sortedViolations.map((v, i) => {
-                          const sev = (v.severity || 'LOW').toUpperCase();
-                          const sevBadges = {
-                            CRITICAL: 'bg-red-100 text-red-800 border-red-200',
-                            HIGH: 'bg-orange-100 text-orange-800 border-orange-200',
-                            MEDIUM: 'bg-amber-100 text-amber-800 border-amber-200',
-                            LOW: 'bg-emerald-100 text-emerald-800 border-emerald-200'
-                          };
-
-                          const stat = (v.status || 'OPEN').toUpperCase();
-                          const statusBadges = {
-                            OPEN: 'bg-red-50 text-red-600 border-red-200',
-                            IN_PROGRESS: 'bg-amber-50 text-amber-600 border-amber-200',
-                            MITIGATED: 'bg-emerald-50 text-emerald-600 border-emerald-200',
-                            FALSE_POSITIVE: 'bg-slate-100 text-slate-600 border-slate-200'
-                          };
-
-                          return (
-                            <tr key={v.id || i} className="hover:bg-slate-50/80 transition-colors">
-                              <td className="p-4 font-bold text-slate-800">{v.employee || 'Unknown'}</td>
-                              <td className="p-4 font-medium text-slate-600">{v.department || 'Unknown'}</td>
-                              <td className="p-4">
-                                <div className="font-semibold text-slate-800">{v.rule_violated}</div>
-                                <div className="text-slate-400 text-xs mt-0.5 line-clamp-1">{v.explanation}</div>
-                              </td>
-                              <td className="p-4 text-center">
-                                <span className={`px-2.5 py-1 rounded-full text-xs font-bold border ${
-                                  sevBadges[sev] || 'bg-slate-100 text-slate-800 border-slate-200'
-                                }`}>
-                                  {sev}
-                                </span>
-                              </td>
-                              <td className="p-4 text-center">
-                                <span className={`px-2.5 py-1 rounded-full text-xs font-bold border uppercase ${
-                                  statusBadges[stat] || 'bg-slate-100 text-slate-800 border-slate-200'
-                                }`}>
-                                  {stat.replace('_', ' ')}
-                                </span>
-                              </td>
-                              <td className="p-4 text-center no-print">
-                                <button
-                                  onClick={() => {
-                                    setSelectedViolation(v);
-                                    setMitigationStatus(v.status || 'OPEN');
-                                    setMitigationNotes(v.mitigation_notes || '');
-                                  }}
-                                  className="text-xs font-bold text-indigo-600 bg-indigo-50 border border-indigo-100 hover:bg-indigo-100 px-3 py-1.5 rounded-lg transition-colors cursor-pointer inline-flex items-center gap-1"
-                                >
-                                  Manage
-                                </button>
-                              </td>
+                    {/* Table */}
+                    {sortedViolations.length === 0 ? (
+                      <div className="p-12 bg-slate-50 border border-slate-200 rounded-2xl text-center text-slate-500 font-medium">
+                        No policy violations matching current filters.
+                      </div>
+                    ) : (
+                      <div className="overflow-x-auto border border-slate-200 rounded-2xl shadow-sm">
+                        <table className="w-full text-left border-collapse text-sm text-slate-600">
+                          <thead>
+                            <tr className="bg-slate-900 text-white">
+                              <th className="p-4 font-semibold rounded-tl-xl w-24">Employee</th>
+                              <th className="p-4 font-semibold w-28">Department</th>
+                              <th className="p-4 font-semibold">Rule Violated</th>
+                              <th className="p-4 font-semibold w-24 text-center">Severity</th>
+                              <th className="p-4 font-semibold w-32 text-center">Status</th>
+                              <th className="p-4 font-semibold rounded-tr-xl w-24 text-center no-print">Actions</th>
                             </tr>
-                          );
-                        })}
-                      </tbody>
-                    </table>
+                          </thead>
+                          <tbody className="divide-y divide-slate-100">
+                            {sortedViolations.map((v, i) => {
+                              const sev = (v.severity || 'LOW').toUpperCase();
+                              const sevBadges = {
+                                CRITICAL: 'bg-red-100 text-red-800 border-red-200',
+                                HIGH: 'bg-orange-100 text-orange-800 border-orange-200',
+                                MEDIUM: 'bg-amber-100 text-amber-800 border-amber-200',
+                                LOW: 'bg-emerald-100 text-emerald-800 border-emerald-200'
+                              };
+
+                              const stat = (v.status || 'OPEN').toUpperCase();
+                              const statusBadges = {
+                                OPEN: 'bg-red-50 text-red-600 border-red-200',
+                                IN_PROGRESS: 'bg-amber-50 text-amber-600 border-amber-200',
+                                MITIGATED: 'bg-emerald-50 text-emerald-600 border-emerald-200',
+                                FALSE_POSITIVE: 'bg-slate-100 text-slate-600 border-slate-200'
+                              };
+
+                              return (
+                                <tr key={v.id || i} className="hover:bg-slate-50/80 transition-colors">
+                                  <td className="p-4 font-bold text-slate-800">{v.employee || 'Unknown'}</td>
+                                  <td className="p-4 font-medium text-slate-600">{v.department || 'Unknown'}</td>
+                                  <td className="p-4">
+                                    <div className="font-semibold text-slate-800">{v.rule_violated}</div>
+                                    <div className="text-slate-400 text-xs mt-0.5 line-clamp-1">{v.explanation}</div>
+                                  </td>
+                                  <td className="p-4 text-center">
+                                    <span className={`px-2.5 py-1 rounded-full text-xs font-bold border ${
+                                      sevBadges[sev] || 'bg-slate-100 text-slate-800 border-slate-200'
+                                    }`}>
+                                      {sev}
+                                    </span>
+                                  </td>
+                                  <td className="p-4 text-center">
+                                    <span className={`px-2.5 py-1 rounded-full text-xs font-bold border uppercase ${
+                                      statusBadges[stat] || 'bg-slate-100 text-slate-800 border-slate-200'
+                                    }`}>
+                                      {stat.replace('_', ' ')}
+                                    </span>
+                                  </td>
+                                  <td className="p-4 text-center no-print">
+                                    <button
+                                      onClick={() => {
+                                        setSelectedViolation(v);
+                                        setMitigationStatus(v.status || 'OPEN');
+                                        setMitigationNotes(v.mitigation_notes || '');
+                                      }}
+                                      className="text-xs font-bold text-indigo-600 bg-indigo-50 border border-indigo-100 hover:bg-indigo-100 px-3 py-1.5 rounded-lg transition-colors cursor-pointer inline-flex items-center gap-1"
+                                    >
+                                      Manage
+                                    </button>
+                                  </td>
+                                </tr>
+                              );
+                            })}
+                          </tbody>
+                        </table>
+                      </div>
+                    )}
                   </div>
-                )}
+
+                  {/* Right Column: Frequent Policy Breaches Histogram */}
+                  <div className="w-full lg:w-80 flex-shrink-0 no-print">
+                    <FrequentPoliciesCard violations={violations} />
+                  </div>
+                </div>
               </div>
 
             </div>
@@ -894,138 +1048,16 @@ export default function Dashboard({ onLogout }) {
 
       {/* MITIGATION DETAILS MODAL / DRAWER */}
       {selectedViolation && (
-        <div className="fixed inset-0 bg-[#0f172a]/70 backdrop-blur-sm z-50 flex items-center justify-center p-4 overflow-y-auto animate-in fade-in duration-200 text-slate-800">
-          <div className="bg-white rounded-3xl border border-slate-200 max-w-2xl w-full shadow-2xl overflow-hidden flex flex-col max-h-[90vh]">
-            
-            {/* Modal Header */}
-            <div className="bg-[#1e293b] text-white p-6 flex justify-between items-center">
-              <div>
-                <span className="text-xs font-extrabold tracking-widest text-indigo-300 uppercase block mb-1">
-                  Violation Audit Registry #{selectedViolation.id}
-                </span>
-                <h3 className="text-xl font-bold">Manage Compliance Status</h3>
-              </div>
-              <button 
-                onClick={() => setSelectedViolation(null)}
-                className="text-slate-400 hover:text-white p-2 rounded-xl hover:bg-slate-800 transition-colors cursor-pointer"
-              >
-                <ArrowLeft className="w-5 h-5" />
-              </button>
-            </div>
-
-            {/* Modal Body */}
-            <div className="p-6 md:p-8 space-y-6 overflow-y-auto">
-              
-              {/* Basic Meta Grid */}
-              <div className="grid grid-cols-2 gap-4">
-                <div>
-                  <span className="text-xs text-slate-400 block mb-1">Employee</span>
-                  <span className="font-bold bg-slate-50 px-3 py-2 rounded-lg border border-slate-200 text-slate-800 block text-sm">
-                    {selectedViolation.employee || 'Unknown'}
-                  </span>
-                </div>
-                <div>
-                  <span className="text-xs text-slate-400 block mb-1">Department</span>
-                  <span className="font-bold bg-slate-50 px-3 py-2 rounded-lg border border-slate-200 text-slate-800 block text-sm">
-                    {selectedViolation.department || 'Unknown'}
-                  </span>
-                </div>
-              </div>
-
-              {/* Severity & Rule */}
-              <div>
-                <span className="text-xs text-slate-400 block mb-1">Policy Rule Violated</span>
-                <div className="bg-slate-50 p-4 rounded-xl border border-slate-200">
-                  <div className="flex gap-2 items-center mb-2">
-                    <span className={`px-2.5 py-0.5 rounded-full text-xs font-bold border uppercase ${(selectedViolation.severity || 'low').toUpperCase() === 'CRITICAL' ? 'bg-red-100 text-red-800 border-red-200' : (selectedViolation.severity || 'low').toUpperCase() === 'HIGH' ? 'bg-orange-100 text-orange-800 border-orange-200' : (selectedViolation.severity || 'low').toUpperCase() === 'MEDIUM' ? 'bg-amber-100 text-amber-800 border-amber-200' : 'bg-emerald-100 text-emerald-800 border-emerald-200'}`}>
-                      {selectedViolation.severity} Severity
-                    </span>
-                  </div>
-                  <h4 className="font-extrabold text-slate-800">{selectedViolation.rule_violated}</h4>
-                </div>
-              </div>
-
-              {/* Log Evidence */}
-              <div>
-                <span className="text-xs text-slate-400 block mb-1">System Log Evidence</span>
-                <pre className="bg-[#0f172a] text-[#38bdf8] p-4 rounded-xl border border-slate-800 text-xs font-mono whitespace-pre-wrap break-all max-h-32 overflow-y-auto">
-                  {selectedViolation.log_entry}
-                </pre>
-              </div>
-
-              {/* AI Explanation & Recommendation */}
-              <div className="space-y-4">
-                <div>
-                  <span className="text-xs text-slate-400 block mb-1">Explanation</span>
-                  <p className="text-sm leading-relaxed text-slate-600 bg-slate-50 p-3.5 rounded-xl border border-slate-100">
-                    {selectedViolation.explanation}
-                  </p>
-                </div>
-                <div>
-                  <span className="text-xs text-slate-400 block mb-1">Compliance Recommendation</span>
-                  <p className="text-sm leading-relaxed text-slate-700 bg-indigo-50/50 p-3.5 rounded-xl border border-indigo-100/50 font-medium">
-                    {selectedViolation.recommendation}
-                  </p>
-                </div>
-              </div>
-
-              {/* Resolution Workflow */}
-              <div className="border-t border-slate-200 pt-6 space-y-4">
-                <h4 className="font-bold text-slate-800">Resolution & Auditor Logs</h4>
-                
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                  <div>
-                    <label className="block text-xs font-bold text-slate-500 mb-1.5 uppercase">Auditor Status</label>
-                    <select
-                      value={mitigationStatus}
-                      onChange={(e) => setMitigationStatus(e.target.value)}
-                      className="w-full bg-slate-50 border border-slate-300 rounded-xl px-4 py-2.5 outline-none focus:ring-2 focus:ring-indigo-500 cursor-pointer font-bold text-sm"
-                    >
-                      <option value="OPEN">🔴 Open / Unresolved</option>
-                      <option value="IN_PROGRESS">🟡 In Progress</option>
-                      <option value="MITIGATED">🟢 Mitigated / Resolved</option>
-                      <option value="FALSE_POSITIVE">⚪ False Positive</option>
-                    </select>
-                  </div>
-                </div>
-
-                <div>
-                  <label className="block text-xs font-bold text-slate-500 mb-1.5 uppercase">Mitigation Log & Notes</label>
-                  <textarea
-                    rows="3"
-                    value={mitigationNotes}
-                    onChange={(e) => setMitigationNotes(e.target.value)}
-                    placeholder="Document training reschedule, security policy changes, or reasoning behind false positive status..."
-                    className="w-full bg-slate-50 border border-slate-300 rounded-xl p-4 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 text-slate-800"
-                  />
-                </div>
-              </div>
-
-            </div>
-
-            {/* Modal Actions */}
-            <div className="bg-slate-50 px-6 py-4 flex justify-end gap-3 border-t border-slate-200/50">
-              <button 
-                onClick={() => setSelectedViolation(null)}
-                className="px-5 py-2.5 bg-white border border-slate-300 hover:bg-slate-100 rounded-xl text-sm font-semibold transition-colors cursor-pointer text-slate-600"
-              >
-                Close
-              </button>
-              <button 
-                onClick={handleSaveMitigation}
-                disabled={savingMitigation}
-                className="px-6 py-2.5 bg-[#4f46e5] hover:bg-[#4338ca] text-white rounded-xl text-sm font-bold shadow-lg shadow-indigo-500/20 transition-all flex items-center gap-2 cursor-pointer disabled:opacity-50"
-              >
-                {savingMitigation ? (
-                  <><Loader2 className="w-4.5 h-4.5 animate-spin" /> Saving...</>
-                ) : (
-                  <>Save Auditor Updates</>
-                )}
-              </button>
-            </div>
-
-          </div>
-        </div>
+        <DrillDownModal
+          violation={selectedViolation}
+          onClose={() => setSelectedViolation(null)}
+          mitigationStatus={mitigationStatus}
+          setMitigationStatus={setMitigationStatus}
+          mitigationNotes={mitigationNotes}
+          setMitigationNotes={setMitigationNotes}
+          onSave={handleSaveMitigation}
+          saving={savingMitigation}
+        />
       )}
     </div>
   );

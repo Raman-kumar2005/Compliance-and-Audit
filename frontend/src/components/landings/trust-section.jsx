@@ -9,7 +9,7 @@ const highlights = [
   {
     icon: Eye,
     title: 'Read-only by design',
-    body: 'Auditra never writes to your production systems. Least-privilege scopes are enforced on every connector.',
+    body: 'AI Compliance Auditor never writes to your production systems. Least-privilege scopes are enforced on every connector.',
   },
   {
     icon: KeyRound,

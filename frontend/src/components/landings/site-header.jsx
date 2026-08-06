@@ -17,7 +17,7 @@ export default function SiteHeader({ onSignIn }) {
             <ShieldCheck className="size-4 text-primary" aria-hidden="true" />
           </span>
           <span className="text-[15px] font-semibold tracking-tight">
-            Auditra
+            AI Compliance Auditor
           </span>
         </a>
 

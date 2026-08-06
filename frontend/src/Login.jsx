@@ -1,70 +1,295 @@
 import React, { useState } from 'react';
+import { 
+  Eye, EyeOff, Mail, Lock, Loader2, Sparkles, 
+  ArrowRight, ShieldCheck, ShieldAlert, ArrowLeft, Building, Users
+} from 'lucide-react';
+import { cn } from './lib/utils';
 
-export default function Login({ onLogin }) {
+export default function Login({ onLogin, onBack }) {
+  const [activeTab, setActiveTab] = useState('employee'); // 'employee' | 'hr'
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
+  const [showPassword, setShowPassword] = useState(false);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState('');
+  const [validationErrors, setValidationErrors] = useState({});
 
-  const handleSubmit = (e) => {
-    e.preventDefault();
-    // Since it's a dummy login, we just check if fields aren't empty
-    if (email && password) {
-      onLogin(); 
-    } else {
-      alert("Please enter a dummy email and password to continue.");
+  // Form input validation
+  const validateForm = () => {
+    const errors = {};
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+
+    if (!email) {
+      errors.email = 'Corporate email is required';
+    } else if (!emailRegex.test(email)) {
+      errors.email = 'Please enter a valid corporate email';
     }
+
+    if (!password) {
+      errors.password = 'Password is required';
+    } else if (password.length < 6) {
+      errors.password = 'Password must be at least 6 characters';
+    }
+
+    setValidationErrors(errors);
+    return Object.keys(errors).length === 0;
+  };
+
+  const handleFormSubmit = (e) => {
+    e.preventDefault();
+    if (!validateForm()) return;
+
+    setError('');
+    setLoading(true);
+
+    // Simulate backend JWT authentication delay
+    setTimeout(() => {
+      setLoading(false);
+      const role = activeTab === 'employee' ? 'Employee' : 'HR';
+      onLogin({ email, role });
+    }, 1200);
+  };
+
+  // Quick Bypasses for Demos
+  const handleQuickLogin = (roleType) => {
+    setError('');
+    setLoading(true);
+
+    const demoCredentials = {
+      employee: { email: 'employee.ross@security-hq.com', password: 'secretEmployeePass', role: 'Employee' },
+      hr: { email: 'auditor.compliance@firm-wide.com', password: 'secureHRAdminPass', role: 'HR' }
+    };
+
+    const target = demoCredentials[roleType];
+    setEmail(target.email);
+    setPassword(target.password);
+
+    setTimeout(() => {
+      setLoading(false);
+      onLogin({ email: target.email, role: target.role });
+    }, 900);
   };
 
   return (
-    <div style={{
-      display: 'flex', justifyContent: 'center', alignItems: 'center', 
-      height: '100vh', backgroundColor: '#0f172a', color: '#e2e8f0', fontFamily: 'sans-serif'
-    }}>
-      <div style={{
-        backgroundColor: '#1e293b', padding: '40px', borderRadius: '12px', 
-        boxShadow: '0 4px 6px rgba(0,0,0,0.3)', width: '100%', maxWidth: '400px'
-      }}>
-        <div style={{ textAlign: 'center', marginBottom: '30px' }}>
-          <h2 style={{ margin: '0 0 10px 0', fontSize: '24px' }}>Enterprise AI Auditor</h2>
-          <p style={{ margin: 0, color: '#94a3b8', fontSize: '14px' }}>Sign in to access compliance dashboard</p>
+    <div className="min-h-screen bg-[#090d16] text-[#e2e8f0] font-sans flex flex-col justify-center items-center p-4 relative overflow-hidden">
+      
+      {/* Decorative neon backdrops */}
+      <div className="absolute top-1/4 left-1/4 w-96 h-96 rounded-full bg-indigo-500/10 blur-[120px] pointer-events-none" />
+      <div className="absolute bottom-1/4 right-1/4 w-96 h-96 rounded-full bg-violet-500/5 blur-[120px] pointer-events-none" />
+
+      {/* Back button */}
+      <button 
+        onClick={onBack}
+        disabled={loading}
+        className="absolute top-6 left-6 text-slate-400 hover:text-white px-4 py-2 rounded-xl bg-slate-900/40 border border-slate-800 hover:border-slate-700/60 transition-all flex items-center gap-2 cursor-pointer disabled:opacity-50 text-xs font-semibold"
+      >
+        <ArrowLeft className="w-4 h-4" /> Return to Site
+      </button>
+
+      {/* Main card */}
+      <div className="bg-[#0b0f19]/90 border border-slate-800 rounded-3xl p-8 max-w-md w-full shadow-2xl relative overflow-hidden transition-all duration-300">
+        
+        {/* Top Glow bar depending on active role */}
+        <div 
+          className={cn(
+            "absolute top-0 left-0 right-0 h-1 transition-all duration-500",
+            activeTab === 'employee' ? 'bg-indigo-500 shadow-[0_0_15px_rgba(99,102,241,0.5)]' : 'bg-purple-500 shadow-[0_0_15px_rgba(168,85,247,0.5)]'
+          )} 
+        />
+
+        {/* Brand header */}
+        <div className="text-center mb-6">
+          <div className="inline-flex items-center justify-center p-3.5 rounded-2xl bg-indigo-500/10 border border-indigo-500/25 text-indigo-400 mb-3">
+            <Building className="w-6 h-6 animate-pulse" />
+          </div>
+          <h2 className="text-2xl font-extrabold text-white tracking-tight">AI Compliance Portal</h2>
+          <p className="text-xs text-slate-400 mt-1 font-medium">Enterprise Security & Audit Management</p>
         </div>
 
-        <form onSubmit={handleSubmit} style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
-          <div>
-            <label style={{ display: 'block', marginBottom: '5px', fontSize: '14px' }}>Corporate Email</label>
-            <input 
-              type="email" 
-              placeholder="admin@company.com"
-              value={email}
-              onChange={(e) => setEmail(e.target.value)}
-              style={{
-                width: '100%', padding: '10px', borderRadius: '6px', border: '1px solid #334155',
-                backgroundColor: '#0f172a', color: 'white', outline: 'none'
-              }}
-            />
+        {/* Portal selector tabs */}
+        <div className="flex bg-[#030712] rounded-2xl border border-slate-800/80 p-1 mb-6">
+          <button
+            type="button"
+            disabled={loading}
+            onClick={() => {
+              setActiveTab('employee');
+              setError('');
+              setValidationErrors({});
+            }}
+            className={cn(
+              "flex-1 flex items-center justify-center gap-2 py-2.5 rounded-xl text-xs font-bold transition-all cursor-pointer",
+              activeTab === 'employee' 
+                ? "bg-indigo-600 border border-indigo-500 text-white shadow-lg shadow-indigo-500/25" 
+                : "text-slate-400 hover:text-slate-200"
+            )}
+          >
+            <Users className="w-4 h-4" />
+            Employee
+          </button>
+          
+          <button
+            type="button"
+            disabled={loading}
+            onClick={() => {
+              setActiveTab('hr');
+              setError('');
+              setValidationErrors({});
+            }}
+            className={cn(
+              "flex-1 flex items-center justify-center gap-2 py-2.5 rounded-xl text-xs font-bold transition-all cursor-pointer",
+              activeTab === 'hr' 
+                ? "bg-purple-600 border border-purple-500 text-white shadow-lg shadow-purple-500/25" 
+                : "text-slate-400 hover:text-slate-200"
+            )}
+          >
+            <Sparkles className="w-4 h-4" />
+            HR Auditor
+          </button>
+        </div>
+
+        {/* Portal dynamic descriptions */}
+        <div className="bg-[#0f172a]/30 border border-slate-800/50 rounded-2xl p-4 mb-6 text-xs leading-relaxed text-slate-400">
+          {activeTab === 'employee' ? (
+            <p>
+              <strong className="text-indigo-400 block mb-0.5 font-bold">Standard Employee Access:</strong>
+              View personal compliance scores, track outstanding security training modules, sign corporate codes of conduct, and review personal violation flags.
+            </p>
+          ) : (
+            <p>
+              <strong className="text-purple-400 block mb-0.5 font-bold">HR Auditor & Administrator Access:</strong>
+              Review company-wide violations, run audits on log uploads, manage policy documents, view comparison metrics, and generate audit reports.
+            </p>
+          )}
+        </div>
+
+        {/* Form */}
+        <form onSubmit={handleFormSubmit} className="space-y-4">
+          
+          {/* Email input */}
+          <div className="space-y-1.5">
+            <label className="block text-[10px] uppercase font-extrabold tracking-wider text-slate-400">Corporate Email</label>
+            <div className="relative">
+              <Mail className="absolute left-3.5 top-3.5 w-4.5 h-4.5 text-slate-500" />
+              <input
+                type="email"
+                placeholder={activeTab === 'employee' ? 'employee@company.com' : 'auditor@company.com'}
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
+                disabled={loading}
+                className={cn(
+                  "w-full bg-[#030712] border rounded-xl pl-10 pr-4 py-3 text-sm text-slate-200 focus:outline-none focus:ring-2 placeholder-slate-600 transition-all font-medium",
+                  validationErrors.email 
+                    ? "border-red-500 focus:ring-red-500/50" 
+                    : activeTab === 'employee' 
+                      ? "border-slate-800 focus:ring-indigo-500/50 focus:border-indigo-500" 
+                      : "border-slate-800 focus:ring-purple-500/50 focus:border-purple-500"
+                )}
+              />
+            </div>
+            {validationErrors.email && (
+              <span className="text-[10px] font-bold text-red-400 block">{validationErrors.email}</span>
+            )}
           </div>
 
-          <div>
-            <label style={{ display: 'block', marginBottom: '5px', fontSize: '14px' }}>Password</label>
-            <input 
-              type="password" 
-              placeholder="••••••••"
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
-              style={{
-                width: '100%', padding: '10px', borderRadius: '6px', border: '1px solid #334155',
-                backgroundColor: '#0f172a', color: 'white', outline: 'none'
-              }}
-            />
+          {/* Password input */}
+          <div className="space-y-1.5">
+            <div className="flex justify-between items-center">
+              <label className="block text-[10px] uppercase font-extrabold tracking-wider text-slate-400">Password</label>
+              <span className="text-[10px] font-semibold text-slate-500 hover:text-indigo-400 cursor-pointer">Forgot?</span>
+            </div>
+            <div className="relative">
+              <Lock className="absolute left-3.5 top-3.5 w-4.5 h-4.5 text-slate-500" />
+              <input
+                type={showPassword ? 'text' : 'password'}
+                placeholder="••••••••"
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                disabled={loading}
+                className={cn(
+                  "w-full bg-[#030712] border rounded-xl pl-10 pr-10 py-3 text-sm text-slate-200 focus:outline-none focus:ring-2 placeholder-slate-600 transition-all font-medium",
+                  validationErrors.password 
+                    ? "border-red-500 focus:ring-red-500/50" 
+                    : activeTab === 'employee' 
+                      ? "border-slate-800 focus:ring-indigo-500/50 focus:border-indigo-500" 
+                      : "border-slate-800 focus:ring-purple-500/50 focus:border-purple-500"
+                )}
+              />
+              <button
+                type="button"
+                tabIndex="-1"
+                onClick={() => setShowPassword(prev => !prev)}
+                className="absolute right-3.5 top-3.5 text-slate-500 hover:text-slate-300 p-0.5 cursor-pointer"
+              >
+                {showPassword ? <EyeOff className="w-4.5 h-4.5" /> : <Eye className="w-4.5 h-4.5" />}
+              </button>
+            </div>
+            {validationErrors.password && (
+              <span className="text-[10px] font-bold text-red-400 block">{validationErrors.password}</span>
+            )}
           </div>
 
-          <button type="submit" style={{
-            width: '100%', padding: '12px', borderRadius: '6px', border: 'none',
-            backgroundColor: '#6366f1', color: 'white', fontSize: '16px', fontWeight: 'bold',
-            cursor: 'pointer', marginTop: '10px'
-          }}>
-            Secure Sign In
+          {/* Error Banner */}
+          {error && (
+            <div className="p-3 bg-red-500/10 border border-red-500/25 text-red-400 rounded-xl text-xs font-semibold flex items-center gap-2">
+              <ShieldAlert className="w-4.5 h-4.5 text-red-500 flex-shrink-0" />
+              <span>{error}</span>
+            </div>
+          )}
+
+          {/* Submit Button */}
+          <button
+            type="submit"
+            disabled={loading}
+            className={cn(
+              "w-full py-3.5 rounded-xl font-bold text-sm text-white flex justify-center items-center gap-2 transition-all cursor-pointer disabled:opacity-50 select-none shadow-lg mt-6",
+              activeTab === 'employee' 
+                ? "bg-indigo-600 hover:bg-indigo-700 shadow-indigo-500/10" 
+                : "bg-purple-600 hover:bg-purple-700 shadow-purple-500/10"
+            )}
+          >
+            {loading ? (
+              <><Loader2 className="w-4 h-4 animate-spin" /> Authenticating via SSO...</>
+            ) : (
+              <span className="flex items-center gap-1.5">
+                Sign In to Compliance <ArrowRight className="w-4 h-4" />
+              </span>
+            )}
           </button>
         </form>
+
+        {/* Divider */}
+        <div className="relative my-6 text-center">
+          <div className="absolute inset-0 flex items-center"><div className="w-full border-t border-slate-800/80"></div></div>
+          <span className="relative bg-[#0b0f19] px-3 text-[10px] uppercase font-extrabold tracking-widest text-slate-500">
+            Hackathon Demo Bypass
+          </span>
+        </div>
+
+        {/* Demo Fast Logins */}
+        <div className="grid grid-cols-2 gap-3">
+          <button
+            type="button"
+            disabled={loading}
+            onClick={() => handleQuickLogin('employee')}
+            className="flex flex-col items-center justify-center p-3 rounded-2xl bg-[#0f172a]/30 border border-slate-800/80 hover:border-indigo-500/30 hover:bg-[#0f172a]/80 transition-all cursor-pointer text-center group disabled:opacity-50"
+          >
+            <ShieldCheck className="w-5 h-5 text-indigo-400 mb-1.5 group-hover:scale-110 transition-transform" />
+            <span className="text-[10px] font-bold text-slate-200">Demo Employee</span>
+            <span className="text-[8px] text-slate-500 font-semibold mt-0.5">Mock Personal Records</span>
+          </button>
+          
+          <button
+            type="button"
+            disabled={loading}
+            onClick={() => handleQuickLogin('hr')}
+            className="flex flex-col items-center justify-center p-3 rounded-2xl bg-[#0f172a]/30 border border-slate-800/80 hover:border-purple-500/30 hover:bg-[#0f172a]/80 transition-all cursor-pointer text-center group disabled:opacity-50"
+          >
+            <Sparkles className="w-5 h-5 text-purple-400 mb-1.5 group-hover:scale-110 transition-transform" />
+            <span className="text-[10px] font-bold text-slate-200">Demo HR Auditor</span>
+            <span className="text-[8px] text-slate-500 font-semibold mt-0.5">Full Management Suite</span>
+          </button>
+        </div>
+
       </div>
     </div>
   );
