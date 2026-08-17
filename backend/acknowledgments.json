@@ -1,0 +1,42 @@
+[
+  {
+    "acknowledgment_id": "ACK-2026-0001",
+    "policy_id": "POL-DPP-001",
+    "policy_version": "DPP-2026-v2.1",
+    "policy_document_sha256": "sha256-dfa89104b2b291c104e12c1b2c34d38e2194fbe9426ba29283e390c918a28741",
+    "employee_id": "EMP-1002",
+    "employee_name": "Auditor",
+    "employee_email": "auditor.compliance@firm-wide.com",
+    "department": "HR",
+    "signature_type": "TYPED_NAME",
+    "typed_signature": "Auditor",
+    "electronic_consent": true,
+    "acknowledged_reading": true,
+    "signed_at": "2026-08-15T12:00:00Z",
+    "signed_ip_address": "203.0.113.123",
+    "user_agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64)",
+    "authentication_method": "JWT_LOGIN",
+    "status": "SIGNED",
+    "receipt_hash": "6b2a0c4f8e5b41094da98305ab2f4b0ea9d8df2e194fbe9426ba29283e390d23"
+  },
+  {
+    "acknowledgment_id": "ACK-2026-0002",
+    "policy_id": "POL-AUP-002",
+    "policy_version": "AUP-2026-v1.0",
+    "policy_document_sha256": "sha256-b0e77d2d3a3f5f3e5b38d38e2194fbe9426ba29283e390c918a28741b0e77d2d",
+    "employee_id": "EMP-3430",
+    "employee_name": "Ross",
+    "employee_email": "employee.ross@security-hq.com",
+    "department": "IT Ops",
+    "signature_type": "TYPED_NAME",
+    "typed_signature": "Ross",
+    "electronic_consent": true,
+    "acknowledged_reading": true,
+    "signed_at": "2026-08-12T14:30:00Z",
+    "signed_ip_address": "203.0.113.88",
+    "user_agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7)",
+    "authentication_method": "JWT_LOGIN",
+    "status": "SIGNED",
+    "receipt_hash": "ab83c1b0c95029a8f28d841b9426210f81d9f041b0e77d2d2a9f3b392a0149ff"
+  }
+]

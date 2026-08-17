@@ -1,0 +1,26 @@
+[
+  {
+    "policy_id": "POL-DPP-001",
+    "title": "Corporate Data Privacy Pledge",
+    "version": "DPP-2026-v2.1",
+    "effective_date": "2026-08-01",
+    "acknowledgment_due_date": "2026-08-31",
+    "document_url": "/uploads/policies/data-privacy-pledge-v2.1.pdf",
+    "document_sha256": "sha256-dfa89104b2b291c104e12c1b2c34d38e2194fbe9426ba29283e390c918a28741",
+    "is_active": true,
+    "created_at": "2026-08-01T00:00:00Z",
+    "content": "# Corporate Data Privacy Pledge (v2.1)\n\n## 1. Overview and Purpose\nThis document outlines the strict guidelines governing the storage, usage, and sharing of personal identifiable information (PII) at Security-HQ. Every employee handling user information must pledge to protect it according to our standards.\n\n## 2. Customer Trust & Security\nWe collect information only for lawful and system-functional requirements. Data must never be downloaded to unencrypted local machines or shared via unauthorized channels.\n\n## 3. Mandatory Protocols\n- **Data Minimization:** Only request the specific properties necessary to perform user actions.\n- **Session Control:** Ensure terminal screens are locked automatically after 5 minutes of idle time.\n- **Secure Transport:** Ensure TLS 1.3 is forced for all API requests transmitting confidential payloads.\n\n## 4. Enforcement and Violations\nBreaches will lead to automatic system revocation, security investigation, and potential contract termination. Thank you for your commitment to client privacy and organizational integrity.\n"
+  },
+  {
+    "policy_id": "POL-AUP-002",
+    "title": "Acceptable Use Policy",
+    "version": "AUP-2026-v1.0",
+    "effective_date": "2026-08-10",
+    "acknowledgment_due_date": "2026-08-15",
+    "document_url": "/uploads/policies/acceptable-use-policy-v1.0.pdf",
+    "document_sha256": "sha256-b0e77d2d3a3f5f3e5b38d38e2194fbe9426ba29283e390c918a28741b0e77d2d",
+    "is_active": true,
+    "created_at": "2026-08-10T00:00:00Z",
+    "content": "# Acceptable Use Policy (v1.0)\n\n## 1. Introduction\nThe systems, networks, and computing devices provided by Security-HQ are intended for business operations. Unauthorized utilization of these assets is prohibited.\n\n## 2. Prohibited Behaviors\n- Storing unencrypted credentials in public github commits.\n- Accessing peer assets without authorized role elevation.\n- Running heavy data scraping scripts that block production networks.\n\n## 3. Safe Usage\nEmployees must report potential breaches to security-alerts@security-hq.com immediately. System audits are conducted weekly to verify configuration adherence.\n"
+  }
+]

@@ -1,0 +1,24 @@
+[
+  {
+    "event_id": "EVT-MOCK-1",
+    "acknowledgment_id": "ACK-2026-0001",
+    "actor_id": "auditor.compliance@firm-wide.com",
+    "action": "POLICY_SIGNED",
+    "policy_version": "DPP-2026-v2.1",
+    "document_sha256": "sha256-dfa89104b2b291c104e12c1b2c34d38e2194fbe9426ba29283e390c918a28741",
+    "server_timestamp": "2026-08-15T12:00:00Z",
+    "source_ip": "203.0.113.123",
+    "user_agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64)"
+  },
+  {
+    "event_id": "EVT-MOCK-2",
+    "acknowledgment_id": "ACK-2026-0002",
+    "actor_id": "employee.ross@security-hq.com",
+    "action": "POLICY_SIGNED",
+    "policy_version": "AUP-2026-v1.0",
+    "document_sha256": "sha256-b0e77d2d3a3f5f3e5b38d38e2194fbe9426ba29283e390c918a28741b0e77d2d",
+    "server_timestamp": "2026-08-12T14:30:00Z",
+    "source_ip": "203.0.113.88",
+    "user_agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7)"
+  }
+]

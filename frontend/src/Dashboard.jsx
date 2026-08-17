@@ -3,20 +3,91 @@ import AuditComparison from './components/AuditComparison';
 import RiskScoreCard from './components/RiskScoreCard';
 import ComplianceBreakdownCard from './components/ComplianceBreakdownCard';
 import AISummaryBox from './components/AISummaryBox';
-import DrillDownModal from './components/DrillDownModal';
+import MitigationModal from './components/MitigationModal';
 import FrequentPoliciesCard from './components/FrequentPoliciesCard';
+import PrintableAuditReport from './components/PrintableAuditReport';
+import SLAStatusIndicator from './components/SLAStatusIndicator';
 import { 
   Upload, AlertTriangle, ShieldAlert, FileText, Loader2, 
   Sparkles, Download, Search, 
   ArrowRight, FileSpreadsheet, History, PlusCircle, ArrowLeft, Clock, LogOut, GitCompare,
-  ArrowUpDown, User
+  ArrowUpDown, User, X, Lock
 } from 'lucide-react';
 import axios from 'axios';
+import { cn } from './lib/utils';
 import { 
   PieChart, Pie, Cell, BarChart, Bar, XAxis, YAxis, CartesianGrid, 
   Tooltip as RechartsTooltip, LineChart, Line, ResponsiveContainer 
 } from 'recharts';
 import html2pdf from 'html2pdf.js';
+
+function renderSlaBadge(sla, now = new Date()) {
+  if (!sla) return <span className="text-[10px] text-slate-400 font-semibold italic">—</span>;
+  
+  const status = sla.sla_status || 'ON_TRACK';
+  const percent = sla.sla_percent_elapsed || 0;
+  const isPaused = status === 'PAUSED';
+  const isResolved = status === 'RESOLVED';
+  
+  let resDue = null;
+  if (sla.resolution_due_at) {
+    try {
+      const cleaned = sla.resolution_due_at.endsWith('Z') ? sla.resolution_due_at : sla.resolution_due_at + 'Z';
+      resDue = new Date(cleaned);
+    } catch (e) {}
+  }
+
+  let timeText = '';
+  let isOverdue = false;
+  if (resDue && !isResolved && !isPaused) {
+    const diffMs = resDue.getTime() - now.getTime();
+    if (diffMs <= 0) {
+      isOverdue = true;
+      const overdueHrs = Math.max(1, Math.ceil(Math.abs(diffMs) / (3600 * 1000)));
+      timeText = `${overdueHrs}h overdue`;
+    } else {
+      const hrs = Math.floor(diffMs / (3600 * 1000));
+      const mins = Math.floor((diffMs % (3600 * 1000)) / 60000);
+      if (hrs > 24) {
+        timeText = `${Math.floor(hrs / 24)}d left`;
+      } else if (hrs > 0) {
+        timeText = `${hrs}h left`;
+      } else {
+        timeText = `${mins}m left`;
+      }
+    }
+  }
+
+  // Determine colors
+  let colorStyle = 'bg-emerald-100 border-emerald-200 text-emerald-800'; // green: On Track
+  let text = `On Track${timeText ? ` · ${timeText}` : ''}`;
+
+  if (sla.escalation_level > 0 || status === 'ESCALATED') {
+    colorStyle = 'bg-purple-105 border-purple-200 text-purple-800'; // purple: Escalated
+    text = 'Escalated · Lead notified';
+  } else if (status === 'BREACHED' || status === 'ACKNOWLEDGMENT_OVERDUE' || isOverdue) {
+    colorStyle = 'bg-red-100 border-red-250 text-red-800'; // red: Breached
+    text = `Breached${timeText ? ` · ${timeText}` : ' · Overdue'}`;
+  } else if (status === 'WARNING_80' || percent >= 80) {
+    colorStyle = 'bg-orange-100 border-orange-250 text-orange-850'; // orange: Warning
+    text = `Warning · ${Math.round(percent)}% SLA used`;
+  } else if (status === 'WARNING_50' || percent >= 50) {
+    colorStyle = 'bg-yellow-100 border-yellow-250 text-yellow-850'; // yellow: Near Breach
+    text = `Near Breach${timeText ? ` · ${timeText}` : ''}`;
+  } else if (isPaused) {
+    colorStyle = 'bg-blue-100 border-blue-200 text-blue-800'; // blue: Paused
+    text = 'Paused';
+  } else if (isResolved) {
+    colorStyle = 'bg-emerald-50 border-emerald-100 text-emerald-700'; // light green: Resolved
+    text = 'Resolved';
+  }
+
+  return (
+    <span className={`px-2.5 py-1 rounded-full text-xs font-bold border inline-block whitespace-nowrap ${colorStyle}`}>
+      {text}
+    </span>
+  );
+}
 
 const MOCK_RESULTS = {
   metrics: {
@@ -51,33 +122,324 @@ export default function Dashboard({ user, onLogout }) {
   const [historyData, setHistoryData] = useState([]);
   const [historyLoading, setHistoryLoading] = useState(false);
 
-  const [policyFile, setPolicyFile] = useState(null);
-  const [logFile, setLogFile] = useState(null);
+  const [policyFiles, setPolicyFiles] = useState([]);
+  const [logFiles, setLogFiles] = useState([]);
   const [loading, setLoading] = useState(false);
   const [auditData, setAuditData] = useState(null);
   const [error, setError] = useState('');
+
+  const [policyError, setPolicyError] = useState('');
+  const [logError, setLogError] = useState('');
+  const [visibleViolationsCount, setVisibleViolationsCount] = useState(10);
+  const [pdfError, setPdfError] = useState('');
+  const [uploadProgress, setUploadProgress] = useState(0);
+
+  const handleAddPolicyFiles = (filesList) => {
+    setPolicyError('');
+    setError('');
+    if (!filesList || filesList.length === 0) return;
+    const filesArray = Array.from(filesList);
+
+    if (policyFiles.length + filesArray.length > 5) {
+      setPolicyError('Maximum of 5 policy files allowed.');
+      return;
+    }
+
+    const validated = [];
+    for (let f of filesArray) {
+      const ext = f.name.substring(f.name.lastIndexOf('.')).toLowerCase();
+      if (ext !== '.pdf' && ext !== '.txt') {
+        setPolicyError(`Unsupported extension: "${f.name}". Only .pdf and .txt files are allowed.`);
+        return;
+      }
+      if (f.size > 5 * 1024 * 1024) {
+        setPolicyError(`File "${f.name}" exceeds the 5 MB size limit.`);
+        return;
+      }
+      validated.push(f);
+    }
+
+    const currentTotalSize = [...policyFiles, ...logFiles].reduce((acc, f) => acc + f.size, 0);
+    const addedSize = validated.reduce((acc, f) => acc + f.size, 0);
+    if (currentTotalSize + addedSize > 20 * 1024 * 1024) {
+      setPolicyError('Total combined upload size exceeds the 20 MB limit.');
+      return;
+    }
+
+    setPolicyFiles(prev => [...prev, ...validated]);
+  };
+
+  const handleAddLogFiles = (filesList) => {
+    setLogError('');
+    setError('');
+    if (!filesList || filesList.length === 0) return;
+    const filesArray = Array.from(filesList);
+
+    if (logFiles.length + filesArray.length > 5) {
+      setLogError('Maximum of 5 log files allowed.');
+      return;
+    }
+
+    const validated = [];
+    for (let f of filesArray) {
+      const ext = f.name.substring(f.name.lastIndexOf('.')).toLowerCase();
+      if (ext !== '.csv' && ext !== '.txt' && ext !== '.json') {
+        setLogError(`Unsupported extension: "${f.name}". Only .csv, .txt, and .json files are allowed.`);
+        return;
+      }
+      if (f.size > 5 * 1024 * 1024) {
+        setLogError(`File "${f.name}" exceeds the 5 MB size limit.`);
+        return;
+      }
+      validated.push(f);
+    }
+
+    const currentTotalSize = [...policyFiles, ...logFiles].reduce((acc, f) => acc + f.size, 0);
+    const addedSize = validated.reduce((acc, f) => acc + f.size, 0);
+    if (currentTotalSize + addedSize > 20 * 1024 * 1024) {
+      setLogError('Total combined upload size exceeds the 20 MB limit.');
+      return;
+    }
+
+    setLogFiles(prev => [...prev, ...validated]);
+  };
   
   const [filterSeverity, setFilterSeverity] = useState('ALL');
   const [filterDepartment, setFilterDepartment] = useState('ALL');
   const [filterStatus, setFilterStatus] = useState('ALL');
+  const [filterEmployee, setFilterEmployee] = useState('ALL');
+  const [filterOverdue, setFilterOverdue] = useState('ALL'); // 'ALL' | 'OVERDUE'
   const [searchQuery, setSearchQuery] = useState('');
   const [sortByField, setSortByField] = useState('severity');
   const [sortOrder, setSortOrder] = useState('desc');
   const [selectedViolation, setSelectedViolation] = useState(null);
-  const [mitigationStatus, setMitigationStatus] = useState('OPEN');
-  const [mitigationNotes, setMitigationNotes] = useState('');
-  const [savingMitigation, setSavingMitigation] = useState(false);
   const [csvExporting, setCsvExporting] = useState(false);
   const [pdfGenerating, setPdfGenerating] = useState(false);
   const [simulatedState, setSimulatedState] = useState('actual'); // 'actual' | 'high-risk'
 
+  const [violations, setViolations] = useState([]);
+  const [loadingViolations, setLoadingViolations] = useState(false);
+  const [violationsError, setViolationsError] = useState('');
+
+  // Policy Acknowledgment States
+  const [hrAcks, setHrAcks] = useState([]);
+  const [loadingHrAcks, setLoadingHrAcks] = useState(false);
+  const [hrAcksError, setHrAcksError] = useState('');
+  const [filterAckDept, setFilterAckDept] = useState('ALL');
+  const [filterAckPolicy, setFilterAckPolicy] = useState('ALL');
+  const [filterAckStatus, setFilterAckStatus] = useState('ALL');
+  const [searchAckEmpQuery, setSearchAckEmpQuery] = useState('');
+  const [selectedReceiptForDownload, setSelectedReceiptForDownload] = useState(null);
+  const [reminderStatusMessage, setReminderStatusMessage] = useState('');
+
+  // SLA Automation States
+  const [slaSummary, setSlaSummary] = useState(null);
+  const [loadingSlaSummary, setLoadingSlaSummary] = useState(false);
+  const [slaSettings, setSlaSettings] = useState(null);
+  const [loadingSlaSettings, setLoadingSlaSettings] = useState(false);
+  const [slaSettingsError, setSlaSettingsError] = useState('');
+  const [filterSlaState, setFilterSlaState] = useState('ALL');
+  const [slaSettingsSaveSuccess, setSlaSettingsSaveSuccess] = useState('');
+
   const BACKEND_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000/api';
+
+  const authHeader = useMemo(() => {
+    if (!user) return {};
+    return { Authorization: `Bearer ${user.email}:${user.role}` };
+  }, [user]);
+
+  const fetchViolations = async () => {
+    setLoadingViolations(true);
+    setViolationsError('');
+    try {
+      const response = await axios.get(`${BACKEND_URL}/violations`, { headers: authHeader });
+      setViolations(response.data);
+    } catch (err) {
+      console.error("Failed to load violations:", err);
+      setViolationsError("Failed to fetch compliance violations registry.");
+    } finally {
+      setLoadingViolations(false);
+    }
+  };
+
+  const fetchHrAcks = async () => {
+    setLoadingHrAcks(true);
+    setHrAcksError('');
+    try {
+      const response = await axios.get(`${BACKEND_URL}/hr/acknowledgments`, { headers: authHeader });
+      setHrAcks(response.data);
+    } catch (err) {
+      console.error("Failed to load acknowledgments:", err);
+      setHrAcksError("Failed to fetch policy acknowledgment registry.");
+    } finally {
+      setLoadingHrAcks(false);
+    }
+  };
+
+  useEffect(() => {
+    if (activeTab === 'report' || activeTab === 'new_audit') {
+      fetchViolations();
+    }
+  }, [activeTab, user]);
 
   useEffect(() => {
     if (activeTab === 'history') {
       fetchHistory();
     }
   }, [activeTab]);
+
+  useEffect(() => {
+    if (activeTab === 'acknowledgments') {
+      fetchHrAcks();
+    }
+  }, [activeTab, user]);
+
+  const fetchSlaSummary = async () => {
+    setLoadingSlaSummary(true);
+    try {
+      const res = await axios.get(`${BACKEND_URL}/violations/sla-summary`, { headers: authHeader });
+      setSlaSummary(res.data);
+    } catch (err) {
+      console.error("Failed to load SLA summary:", err);
+    } finally {
+      setLoadingSlaSummary(false);
+    }
+  };
+
+  const fetchSlaSettings = async () => {
+    setLoadingSlaSettings(true);
+    setSlaSettingsError('');
+    try {
+      const res = await axios.get(`${BACKEND_URL}/hr/sla-settings`, { headers: authHeader });
+      setSlaSettings(res.data);
+    } catch (err) {
+      console.error("Failed to load SLA settings:", err);
+      setSlaSettingsError("Failed to fetch SLA configuration settings.");
+    } finally {
+      setLoadingSlaSettings(false);
+    }
+  };
+
+  const saveSlaSettings = async (updatedSettings) => {
+    setLoadingSlaSettings(true);
+    setSlaSettingsError('');
+    setSlaSettingsSaveSuccess('');
+    try {
+      const res = await axios.patch(`${BACKEND_URL}/hr/sla-settings`, updatedSettings, { headers: authHeader });
+      setSlaSettings(res.data);
+      setSlaSettingsSaveSuccess("SLA settings updated successfully.");
+      fetchViolations(); // Reload violations as due dates change
+      fetchSlaSummary();
+      setTimeout(() => setSlaSettingsSaveSuccess(''), 4000);
+    } catch (err) {
+      console.error("Failed to save SLA settings:", err);
+      setSlaSettingsError(err.response?.data?.detail || "Failed to update SLA configuration settings.");
+    } finally {
+      setLoadingSlaSettings(false);
+    }
+  };
+
+  const triggerSlaEvaluationChecker = async () => {
+    setLoadingSlaSummary(true);
+    try {
+      const res = await axios.post(`${BACKEND_URL}/hr/run-sla-check`, {}, { headers: authHeader });
+      if (res.data.status === 'success') {
+        setReminderStatusMessage("SLA background evaluation scanner triggered successfully!");
+        setTimeout(() => setReminderStatusMessage(''), 4000);
+        fetchViolations();
+        fetchSlaSummary();
+      }
+    } catch (err) {
+      console.error(err);
+      alert("Failed to run SLA evaluation checker.");
+    } finally {
+      setLoadingSlaSummary(false);
+    }
+  };
+
+  useEffect(() => {
+    if (activeTab === 'report' || activeTab === 'new_audit') {
+      fetchSlaSummary();
+    }
+  }, [activeTab, user]);
+
+  useEffect(() => {
+    if (activeTab === 'sla_settings') {
+      fetchSlaSettings();
+    }
+  }, [activeTab, user]);
+
+  // HR Acknowledgment Stats
+  const totalRequired = useMemo(() => hrAcks.length, [hrAcks]);
+  const signedCount = useMemo(() => hrAcks.filter(a => a.status === 'SIGNED').length, [hrAcks]);
+  const pendingCount = useMemo(() => hrAcks.filter(a => a.status === 'PENDING').length, [hrAcks]);
+  const overdueAcksCount = useMemo(() => hrAcks.filter(a => a.status === 'OVERDUE').length, [hrAcks]);
+  const completionRate = useMemo(() => {
+    if (totalRequired === 0) return 0;
+    return ((signedCount / totalRequired) * 100).toFixed(1);
+  }, [totalRequired, signedCount]);
+
+  const filteredHrAcks = useMemo(() => {
+    return hrAcks.filter(ack => {
+      const matchesDept = filterAckDept === 'ALL' || ack.department === filterAckDept;
+      const matchesPolicy = filterAckPolicy === 'ALL' || ack.policy_id === filterAckPolicy || ack.policy_title === filterAckPolicy;
+      const matchesStatus = filterAckStatus === 'ALL' || ack.status === filterAckStatus;
+      
+      const q = searchAckEmpQuery.toLowerCase();
+      const matchesSearch = !q || 
+        (ack.employee_name || '').toLowerCase().includes(q) ||
+        (ack.employee_id || '').toLowerCase().includes(q) ||
+        (ack.employee_email || '').toLowerCase().includes(q);
+      
+      return matchesDept && matchesPolicy && matchesStatus && matchesSearch;
+    });
+  }, [hrAcks, filterAckDept, filterAckPolicy, filterAckStatus, searchAckEmpQuery]);
+
+  const sendReminderNotification = async (row) => {
+    try {
+      const response = await axios.post(`${BACKEND_URL}/hr/policies/${row.policy_id}/send-reminders`, {}, { headers: authHeader });
+      if (response.data.status === 'success') {
+        setReminderStatusMessage(`Mock reminder sent successfully to ${row.employee_name} (${row.employee_id})!`);
+        setTimeout(() => setReminderStatusMessage(''), 4000);
+      }
+    } catch (err) {
+      console.error(err);
+      alert('Failed to send reminder.');
+    }
+  };
+
+  const handleDownloadHrReceipt = async (ackId) => {
+    try {
+      const response = await axios.get(`${BACKEND_URL}/acknowledgments/${ackId}/receipt`, { headers: authHeader });
+      setSelectedReceiptForDownload(response.data);
+    } catch (err) {
+      console.error(err);
+      alert('Failed to fetch receipt details.');
+    }
+  };
+
+  useEffect(() => {
+    if (selectedReceiptForDownload) {
+      const element = document.getElementById('hr-acknowledgment-receipt-pdf-download');
+      if (element) {
+        const opt = {
+          margin: 0.5,
+          filename: `Receipt_${selectedReceiptForDownload.acknowledgment_id}.pdf`,
+          image: { type: 'jpeg', quality: 0.98 },
+          html2canvas: { scale: 2, useCORS: true, letterRendering: true },
+          jsPDF: { unit: 'in', format: 'letter', orientation: 'portrait' }
+        };
+        html2pdf().set(opt).from(element).save();
+        // Clear selection after triggering PDF download
+        setTimeout(() => setSelectedReceiptForDownload(null), 1000);
+      }
+    }
+  }, [selectedReceiptForDownload]);
+
+  useEffect(() => {
+    setVisibleViolationsCount(10);
+  }, [filterSeverity, filterDepartment, filterStatus, filterEmployee, filterOverdue, 
+      filterSlaState, searchQuery, activeTab]);
 
   const fetchHistory = async () => {
     setHistoryLoading(true);
@@ -92,22 +454,34 @@ export default function Dashboard({ user, onLogout }) {
   };
 
   const handleAudit = async () => {
-    if (!policyFile || !logFile) {
-      setError('Please select both a Policy document and a Log file.');
+    if (policyFiles.length === 0 || logFiles.length === 0) {
+      setError('Please select at least one Policy document and one Log file.');
       return;
     }
     setError('');
     setLoading(true);
+    setUploadProgress(0);
 
     const formData = new FormData();
-    formData.append('policy_file', policyFile);
-    formData.append('log_file', logFile);
+    policyFiles.forEach(file => {
+      formData.append('policy_files', file);
+    });
+    logFiles.forEach(file => {
+      formData.append('log_files', file);
+    });
     if (user?.email) {
       formData.append('hr_email', user.email);
     }
 
     try {
-      const response = await axios.post(`${BACKEND_URL}/audit`, formData);
+      const response = await axios.post(`${BACKEND_URL}/audit`, formData, {
+        onUploadProgress: (progressEvent) => {
+          if (progressEvent.total) {
+            const percentCompleted = Math.round((progressEvent.loaded * 100) / progressEvent.total);
+            setUploadProgress(percentCompleted);
+          }
+        }
+      });
       const data = response.data;
       if (data.metrics && data.violations) {
         setAuditData(data);
@@ -124,6 +498,7 @@ export default function Dashboard({ user, onLogout }) {
       setActiveTab('report');
     } finally {
       setLoading(false);
+      setUploadProgress(0);
     }
   };
 
@@ -141,14 +516,21 @@ export default function Dashboard({ user, onLogout }) {
   const exportPDF = () => {
     if (!auditData) return;
     setPdfGenerating(true);
+    setPdfError('');
     
-    const element = document.getElementById('report-container');
+    const element = document.getElementById('printable-audit-report');
+    if (!element) {
+      setPdfError('Printable report container could not be found.');
+      setPdfGenerating(false);
+      return;
+    }
+
     const opt = {
       margin:       0.3,
       filename:     `Compliance_Audit_Report_${auditData.id ? auditData.id.slice(0, 8) : 'demo'}.pdf`,
-      image:        { type: 'jpeg', quality: 0.98 },
+      image:        { type: 'jpeg', quality: 0.85 },
       html2canvas:  { 
-        scale: 2, 
+        scale: 1, 
         useCORS: true,
         logging: false
       },
@@ -163,7 +545,8 @@ export default function Dashboard({ user, onLogout }) {
         setPdfGenerating(false);
       })
       .catch(err => {
-        console.error("PDF generation failed, falling back to print:", err);
+        console.error("PDF generation failed:", err);
+        setPdfError('Failed to generate PDF. Falling back to default browser print.');
         setPdfGenerating(false);
         window.print();
       });
@@ -216,55 +599,7 @@ export default function Dashboard({ user, onLogout }) {
     }
   };
 
-  const handleSaveMitigation = async () => {
-    if (!selectedViolation) return;
-    setSavingMitigation(true);
-    
-    try {
-      // If there's no real audit record ID (e.g. demo data), update state locally only
-      if (!auditData.id) {
-        const updatedViolations = auditData.violations.map(v => {
-          if (v.id === selectedViolation.id) {
-            return { ...v, status: mitigationStatus, mitigation_notes: mitigationNotes };
-          }
-          return v;
-        });
-        setAuditData({
-          ...auditData,
-          violations: updatedViolations
-        });
-        setSelectedViolation(null);
-        return;
-      }
 
-      const response = await axios.patch(
-        `${BACKEND_URL}/audits/${auditData.id}/violations/${selectedViolation.id}`,
-        {
-          status: mitigationStatus,
-          mitigation_notes: mitigationNotes
-        }
-      );
-      
-      if (response.data.status === 'success') {
-        const updatedViolations = auditData.violations.map(v => {
-          if (v.id === selectedViolation.id) {
-            return { ...v, status: mitigationStatus, mitigation_notes: mitigationNotes };
-          }
-          return v;
-        });
-        setAuditData({
-          ...auditData,
-          violations: updatedViolations
-        });
-        setSelectedViolation(null);
-      }
-    } catch (err) {
-      console.error("Failed to update violation mitigation status:", err);
-      alert(err.response?.data?.detail || "Failed to update violation on backend.");
-    } finally {
-      setSavingMitigation(false);
-    }
-  };
 
   const SIMULATED_HIGH_RISK = useMemo(() => ({
     metrics: {
@@ -328,87 +663,186 @@ export default function Dashboard({ user, onLogout }) {
     return auditData || MOCK_RESULTS;
   }, [simulatedState, auditData]);
 
-  const violations = activeAuditData?.violations || [];
+  const displayViolations = useMemo(() => {
+    if (violations.length > 0) return violations;
+    return activeAuditData?.violations || [];
+  }, [violations, activeAuditData]);
+
   const metrics = activeAuditData?.metrics;
 
-  const SEVERITY_WEIGHT = {
+  const SEVERITY_WEIGHT = useMemo(() => ({
     CRITICAL: 4, HIGH: 3, MEDIUM: 2, LOW: 1,
     Critical: 4, High: 3, Medium: 2, Low: 1
-  };
+  }), []);
   
-  const STATUS_WEIGHT = {
-    OPEN: 4, IN_PROGRESS: 3, MITIGATED: 2, FALSE_POSITIVE: 1
-  };
+  const STATUS_WEIGHT = useMemo(() => ({
+    OPEN: 6, IN_PROGRESS: 5, REOPENED: 4, PENDING_VERIFICATION: 3, REQUIRES_CHANGES: 2, RESOLVED: 1
+  }), []);
 
-  const filteredViolations = violations.filter(item => {
-    const itemSeverity = item.severity ? item.severity.toUpperCase() : 'UNKNOWN';
-    const matchesSeverity = filterSeverity === 'ALL' || itemSeverity === filterSeverity;
-    
-    const itemDept = item.department ? item.department.toUpperCase() : 'UNKNOWN';
-    const matchesDept = filterDepartment === 'ALL' || itemDept === filterDepartment.toUpperCase();
-    
-    const itemStatus = item.status ? item.status.toUpperCase() : 'OPEN';
-    const matchesStatus = filterStatus === 'ALL' || itemStatus === filterStatus;
-    
-    const q = searchQuery.toLowerCase();
-    const matchesSearch = !q ||
-      (item.employee || '').toLowerCase().includes(q) ||
-      (item.department || '').toLowerCase().includes(q) ||
-      (item.rule_violated || '').toLowerCase().includes(q) ||
-      (item.log_entry || '').toLowerCase().includes(q) ||
-      (item.explanation || '').toLowerCase().includes(q) ||
-      (item.recommendation || '').toLowerCase().includes(q);
+  const filteredViolations = useMemo(() => {
+    return displayViolations.filter(item => {
+      const itemSeverity = item.severity ? item.severity.toUpperCase() : 'UNKNOWN';
+      const matchesSeverity = filterSeverity === 'ALL' || itemSeverity === filterSeverity.toUpperCase();
       
-    return matchesSeverity && matchesDept && matchesStatus && matchesSearch;
-  });
+      const itemDept = item.department ? item.department.toUpperCase() : 'UNKNOWN';
+      const matchesDept = filterDepartment === 'ALL' || itemDept === filterDepartment.toUpperCase();
+      
+      const itemStatus = item.status ? item.status.toUpperCase() : 'OPEN';
+      const matchesStatus = filterStatus === 'ALL' || itemStatus === filterStatus.toUpperCase();
 
-  const sortedViolations = [...filteredViolations].sort((a, b) => {
-    let valA, valB;
-    if (sortByField === 'severity') {
-      valA = SEVERITY_WEIGHT[a.severity] || 0;
-      valB = SEVERITY_WEIGHT[b.severity] || 0;
-    } else if (sortByField === 'status') {
-      valA = STATUS_WEIGHT[a.status] || 4;
-      valB = STATUS_WEIGHT[b.status] || 4;
-    } else if (sortByField === 'employee') {
-      valA = a.employee || '';
-      valB = b.employee || '';
-    } else if (sortByField === 'department') {
-      valA = a.department || '';
-      valB = b.department || '';
-    } else {
-      valA = a.id;
-      valB = b.id;
-    }
-    
-    if (typeof valA === 'string') {
-      return sortOrder === 'asc' ? valA.localeCompare(valB) : valB.localeCompare(valA);
-    } else {
-      return sortOrder === 'asc' ? valA - valB : valB - valA;
-    }
-  });
+      const matchesEmployee = filterEmployee === 'ALL' || (item.assigned_employee_id || '').toUpperCase() === filterEmployee.toUpperCase();
+
+      let matchesOverdue = true;
+      if (filterOverdue === 'OVERDUE') {
+        const isResolved = itemStatus === 'RESOLVED';
+        if (isResolved || !item.due_date) {
+          matchesOverdue = false;
+        } else {
+          try {
+            const due = new Date(item.due_date);
+            matchesOverdue = due < new Date();
+          } catch (e) {
+            matchesOverdue = false;
+          }
+        }
+      }
+      
+      // SLA Filters
+      const sla = item.sla || {};
+      let matchesSla = true;
+      if (filterSlaState === 'ON_TRACK') {
+        matchesSla = (sla.sla_status || 'ON_TRACK') === 'ON_TRACK';
+      } else if (filterSlaState === 'NEAR_BREACH') {
+        matchesSla = ['WARNING_50', 'WARNING_80'].includes(sla.sla_status);
+      } else if (filterSlaState === 'BREACHED') {
+        matchesSla = ['BREACHED', 'ACKNOWLEDGMENT_OVERDUE'].includes(sla.sla_status);
+      } else if (filterSlaState === 'ESCALATED') {
+        matchesSla = (sla.escalation_level || 0) > 0 || (sla.sla_status || '') === 'ESCALATED';
+      }
+      
+      const q = searchQuery.toLowerCase();
+      const matchesSearch = !q ||
+        (item.employee || '').toLowerCase().includes(q) ||
+        (item.assigned_employee_name || '').toLowerCase().includes(q) ||
+        (item.department || '').toLowerCase().includes(q) ||
+        (item.rule_violated || '').toLowerCase().includes(q) ||
+        (item.log_entry || '').toLowerCase().includes(q) ||
+        (item.explanation || '').toLowerCase().includes(q) ||
+        (item.recommendation || '').toLowerCase().includes(q);
+        
+      return matchesSeverity && matchesDept && matchesStatus && matchesEmployee && matchesOverdue && 
+        matchesSla && matchesSearch;
+    });
+  }, [displayViolations, filterSeverity, filterDepartment, filterStatus, filterEmployee, filterOverdue, 
+      filterSlaState, searchQuery]);
+
+  const sortedViolations = useMemo(() => {
+    return [...filteredViolations].sort((a, b) => {
+      let valA, valB;
+      if (sortByField === 'severity') {
+        valA = SEVERITY_WEIGHT[a.severity] || 0;
+        valB = SEVERITY_WEIGHT[b.severity] || 0;
+      } else if (sortByField === 'status') {
+        valA = STATUS_WEIGHT[a.status] || 6;
+        valB = STATUS_WEIGHT[b.status] || 6;
+      } else if (sortByField === 'employee') {
+        valA = a.employee || '';
+        valB = b.employee || '';
+      } else if (sortByField === 'department') {
+        valA = a.department || '';
+        valB = b.department || '';
+      } else {
+        valA = a.id;
+        valB = b.id;
+      }
+      
+      if (typeof valA === 'string') {
+        return sortOrder === 'asc' ? valA.localeCompare(valB) : valB.localeCompare(valA);
+      } else {
+        return sortOrder === 'asc' ? valA - valB : valB - valA;
+      }
+    });
+  }, [filteredViolations, sortByField, sortOrder, SEVERITY_WEIGHT, STATUS_WEIGHT]);
+
+  const severityCounts = useMemo(() => {
+    return {
+      ALL: displayViolations.length,
+      LOW: displayViolations.filter(v => (v.severity || '').toUpperCase() === 'LOW').length,
+      MEDIUM: displayViolations.filter(v => (v.severity || '').toUpperCase() === 'MEDIUM').length,
+      HIGH: displayViolations.filter(v => (v.severity || '').toUpperCase() === 'HIGH').length,
+      CRITICAL: displayViolations.filter(v => (v.severity || '').toUpperCase() === 'CRITICAL').length,
+    };
+  }, [displayViolations]);
 
   const getSeverityCount = (severity) => {
-    if (severity === 'ALL') return violations.length;
-    return violations.filter(v => (v.severity || '').toUpperCase() === severity).length;
+    return severityCounts[severity] || 0;
   };
 
-  const pieData = metrics ? [
-    { name: 'Low', value: metrics.risk_distribution?.Low || 0 },
-    { name: 'Medium', value: metrics.risk_distribution?.Medium || 0 },
-    { name: 'High', value: metrics.risk_distribution?.High || 0 },
-    { name: 'Critical', value: metrics.risk_distribution?.Critical || 0 },
-  ] : [];
+  const pieData = useMemo(() => {
+    if (!metrics) return [];
+    return [
+      { name: 'Low', value: metrics.risk_distribution?.Low || 0 },
+      { name: 'Medium', value: metrics.risk_distribution?.Medium || 0 },
+      { name: 'High', value: metrics.risk_distribution?.High || 0 },
+      { name: 'Critical', value: metrics.risk_distribution?.Critical || 0 },
+    ];
+  }, [metrics]);
 
-  const barData = metrics ? Object.entries(metrics.violations_by_department || {}).map(([key, val]) => ({
-    name: key,
-    violations: val
-  })) : [];
+  const barData = useMemo(() => {
+    if (!metrics) return [];
+    return Object.entries(metrics.violations_by_department || {}).map(([key, val]) => ({
+      name: key,
+      violations: val
+    }));
+  }, [metrics]);
 
-  const trendData = metrics ? (metrics.compliance_trend || []).map((val, idx) => ({
-    week: `W${idx + 1}`,
-    score: val
-  })) : [];
+  const trendData = useMemo(() => {
+    if (!metrics) return [];
+    return (metrics.compliance_trend || []).map((val, idx) => ({
+      week: `W${idx + 1}`,
+      score: val
+    }));
+  }, [metrics]);
+
+  const violationsToRender = useMemo(() => {
+    return sortedViolations.slice(0, visibleViolationsCount);
+  }, [sortedViolations, visibleViolationsCount]);
+
+  // Dynamic Remediation Metrics
+  const openViolationsCount = useMemo(() => {
+    return displayViolations.filter(v => ['OPEN', 'IN_PROGRESS', 'REQUIRES_CHANGES', 'REOPENED'].includes((v.status || '').toUpperCase())).length;
+  }, [displayViolations]);
+
+  const pendingVerificationCount = useMemo(() => {
+    return displayViolations.filter(v => (v.status || '').toUpperCase() === 'PENDING_VERIFICATION').length;
+  }, [displayViolations]);
+
+  const overdueCount = useMemo(() => {
+    return displayViolations.filter(v => {
+      if ((v.status || '').toUpperCase() === 'RESOLVED') return false;
+      if (!v.due_date) return false;
+      try {
+        const due = new Date(v.due_date);
+        return due < new Date();
+      } catch (e) {
+        return false;
+      }
+    }).length;
+  }, [displayViolations]);
+
+  const resolvedThisMonthCount = useMemo(() => {
+    const currentMonth = new Date().getMonth();
+    const currentYear = new Date().getFullYear();
+    return displayViolations.filter(v => {
+      if ((v.status || '').toUpperCase() !== 'RESOLVED' || !v.verified_at) return false;
+      try {
+        const verifiedDate = new Date(v.verified_at);
+        return verifiedDate.getMonth() === currentMonth && verifiedDate.getFullYear() === currentYear;
+      } catch (e) {
+        return false;
+      }
+    }).length;
+  }, [displayViolations]);
 
   return (
     <div className="min-h-screen bg-[#0f172a] text-slate-100 font-sans selection:bg-indigo-500/30 flex flex-col">
@@ -433,7 +867,7 @@ export default function Dashboard({ user, onLogout }) {
             </div>
             <div className="flex bg-[#0f172a] rounded-xl p-1 shadow-inner border border-slate-800">
               <button 
-                onClick={() => { setActiveTab('new_audit'); setAuditData(null); }}
+                onClick={() => { setActiveTab('new_audit'); setAuditData(null); setPolicyFiles([]); setLogFiles([]); }}
                 className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-semibold transition-all cursor-pointer ${
                   activeTab === 'new_audit' ? 'bg-[#4f46e5] text-white shadow-md' : 'text-slate-400 hover:text-slate-200'
                 }`}
@@ -455,6 +889,22 @@ export default function Dashboard({ user, onLogout }) {
                 }`}
               >
                 <GitCompare className="w-4 h-4 text-indigo-300" /> Compare
+              </button>
+              <button 
+                onClick={() => setActiveTab('acknowledgments')}
+                className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-semibold transition-all cursor-pointer ${
+                  activeTab === 'acknowledgments' ? 'bg-[#4f46e5] text-white shadow-md' : 'text-slate-400 hover:text-slate-200'
+                }`}
+              >
+                <Lock className="w-4 h-4 text-indigo-300" /> Policy E-Signs
+              </button>
+              <button 
+                onClick={() => setActiveTab('sla_settings')}
+                className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-semibold transition-all cursor-pointer ${
+                  activeTab === 'sla_settings' ? 'bg-[#4f46e5] text-white shadow-md' : 'text-slate-400 hover:text-slate-200'
+                }`}
+              >
+                <Clock className="w-4 h-4 text-indigo-300" /> SLA & Escalations
               </button>
             </div>
 
@@ -491,58 +941,149 @@ export default function Dashboard({ user, onLogout }) {
             </header>
 
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-8">
-              <div className="bg-[#1e293b] p-6 rounded-2xl border border-slate-700/50 shadow-xl relative overflow-hidden group">
-                <div className="absolute top-0 left-0 w-1 h-full bg-indigo-500"></div>
-                <label className="block text-sm font-semibold mb-4 flex items-center gap-2 text-slate-300">
-                  <FileText className="w-5 h-5 text-indigo-400" /> Company Policy Document (.pdf, .txt)
-                </label>
-                <div className="flex items-center gap-4">
-                  <label className="bg-[#4f46e5] hover:bg-[#4338ca] text-white px-5 py-2.5 rounded-xl cursor-pointer font-semibold transition-colors shadow-lg shadow-indigo-500/20 flex items-center gap-2">
-                    Choose File
-                    <input 
-                      type="file" 
-                      accept=".pdf,.txt" 
-                      onChange={(e) => setPolicyFile(e.target.files[0])}
-                      className="hidden"
-                    />
+              <div className="bg-[#1e293b] p-6 rounded-2xl border border-slate-700/50 shadow-xl relative overflow-hidden group flex flex-col justify-between">
+                <div>
+                  <div className="absolute top-0 left-0 w-1 h-full bg-indigo-500"></div>
+                  <label className="block text-sm font-semibold mb-4 flex items-center gap-2 text-slate-300">
+                    <FileText className="w-5 h-5 text-indigo-400" /> Company Policy Document (.pdf, .txt)
                   </label>
-                  <span className="text-sm text-slate-400 truncate flex-1">
-                    {policyFile ? policyFile.name : 'No file chosen'}
-                  </span>
+                  <div className="space-y-4">
+                    <div className="flex items-center gap-4">
+                      <label className="bg-[#4f46e5] hover:bg-[#4338ca] text-white px-5 py-2.5 rounded-xl cursor-pointer font-semibold transition-colors shadow-lg shadow-indigo-500/20 flex items-center gap-2">
+                        <PlusCircle className="w-4 h-4" /> Add Files
+                        <input 
+                          type="file" 
+                          accept=".pdf,.txt" 
+                          multiple
+                          onChange={(e) => {
+                            handleAddPolicyFiles(e.target.files);
+                            e.target.value = '';
+                          }}
+                          className="hidden"
+                        />
+                      </label>
+                      {policyFiles.length > 0 && (
+                        <button
+                          onClick={() => { setPolicyFiles([]); setPolicyError(''); }}
+                          className="text-xs text-slate-400 hover:text-red-400 transition-colors cursor-pointer"
+                        >
+                          Clear All
+                        </button>
+                      )}
+                    </div>
+
+                    {policyFiles.length > 0 ? (
+                      <div className="space-y-2 max-h-40 overflow-y-auto pr-1 custom-scrollbar">
+                        {policyFiles.map((file, idx) => (
+                          <div key={idx} className="flex items-center justify-between bg-slate-800/80 px-3 py-2 rounded-xl text-sm border border-slate-700/30">
+                            <div className="flex items-center gap-2 truncate pr-2">
+                              <FileText className="w-4 h-4 text-indigo-400 flex-shrink-0" />
+                              <span className="text-slate-300 truncate">{file.name}</span>
+                              <span className="text-[10px] text-slate-500 font-semibold flex-shrink-0 ml-1">({(file.size / (1024 * 1024)).toFixed(2)} MB)</span>
+                            </div>
+                            <button 
+                              onClick={() => setPolicyFiles(prev => prev.filter((_, i) => i !== idx))}
+                              className="text-slate-400 hover:text-red-400 p-1 rounded transition-colors cursor-pointer"
+                            >
+                              <X className="w-4 h-4" />
+                            </button>
+                          </div>
+                        ))}
+                      </div>
+                    ) : (
+                      <span className="text-sm text-slate-400 italic">No files chosen</span>
+                    )}
+                  </div>
                 </div>
+                {policyError && (
+                  <div className="mt-4 text-xs text-red-400 font-semibold bg-red-500/10 border border-red-500/20 p-2.5 rounded-xl flex items-center gap-2">
+                    <AlertTriangle className="w-4 h-4 text-red-400 flex-shrink-0" /> {policyError}
+                  </div>
+                )}
               </div>
 
-              <div className="bg-[#1e293b] p-6 rounded-2xl border border-slate-700/50 shadow-xl relative overflow-hidden group">
-                <div className="absolute top-0 left-0 w-1 h-full bg-emerald-500"></div>
-                <label className="block text-sm font-semibold mb-4 flex items-center gap-2 text-slate-300">
-                  <FileSpreadsheet className="w-5 h-5 text-emerald-400" /> System Logs File (.csv, .txt, .json)
-                </label>
-                <div className="flex items-center gap-4">
-                  <label className="bg-[#10b981] hover:bg-[#059669] text-white px-5 py-2.5 rounded-xl cursor-pointer font-semibold transition-colors shadow-lg shadow-emerald-500/20 flex items-center gap-2">
-                    Choose File
-                    <input 
-                      type="file" 
-                      accept=".csv,.txt,.json" 
-                      onChange={(e) => setLogFile(e.target.files[0])}
-                      className="hidden"
-                    />
+              <div className="bg-[#1e293b] p-6 rounded-2xl border border-slate-700/50 shadow-xl relative overflow-hidden group flex flex-col justify-between">
+                <div>
+                  <div className="absolute top-0 left-0 w-1 h-full bg-emerald-500"></div>
+                  <label className="block text-sm font-semibold mb-4 flex items-center gap-2 text-slate-300">
+                    <FileSpreadsheet className="w-5 h-5 text-emerald-400" /> System Logs File (.csv, .txt, .json)
                   </label>
-                  <span className="text-sm text-slate-400 truncate flex-1">
-                    {logFile ? logFile.name : 'No file chosen'}
-                  </span>
+                  <div className="space-y-4">
+                    <div className="flex items-center gap-4">
+                      <label className="bg-[#10b981] hover:bg-[#059669] text-white px-5 py-2.5 rounded-xl cursor-pointer font-semibold transition-colors shadow-lg shadow-emerald-500/20 flex items-center gap-2">
+                        <PlusCircle className="w-4 h-4" /> Add Files
+                        <input 
+                          type="file" 
+                          accept=".csv,.txt,.json" 
+                          multiple
+                          onChange={(e) => {
+                            handleAddLogFiles(e.target.files);
+                            e.target.value = '';
+                          }}
+                          className="hidden"
+                        />
+                      </label>
+                      {logFiles.length > 0 && (
+                        <button
+                          onClick={() => { setLogFiles([]); setLogError(''); }}
+                          className="text-xs text-slate-400 hover:text-red-400 transition-colors cursor-pointer"
+                        >
+                          Clear All
+                        </button>
+                      )}
+                    </div>
+
+                    {logFiles.length > 0 ? (
+                      <div className="space-y-2 max-h-40 overflow-y-auto pr-1 custom-scrollbar">
+                        {logFiles.map((file, idx) => (
+                          <div key={idx} className="flex items-center justify-between bg-slate-800/80 px-3 py-2 rounded-xl text-sm border border-slate-700/30">
+                            <div className="flex items-center gap-2 truncate pr-2">
+                              <FileSpreadsheet className="w-4 h-4 text-emerald-400 flex-shrink-0" />
+                              <span className="text-slate-300 truncate">{file.name}</span>
+                              <span className="text-[10px] text-slate-500 font-semibold flex-shrink-0 ml-1">({(file.size / (1024 * 1024)).toFixed(2)} MB)</span>
+                            </div>
+                            <button 
+                              onClick={() => setLogFiles(prev => prev.filter((_, i) => i !== idx))}
+                              className="text-slate-400 hover:text-red-400 p-1 rounded transition-colors cursor-pointer"
+                            >
+                              <X className="w-4 h-4" />
+                            </button>
+                          </div>
+                        ))}
+                      </div>
+                    ) : (
+                      <span className="text-sm text-slate-400 italic">No files chosen</span>
+                    )}
+                  </div>
                 </div>
+                {logError && (
+                  <div className="mt-4 text-xs text-red-400 font-semibold bg-red-500/10 border border-red-500/20 p-2.5 rounded-xl flex items-center gap-2">
+                    <AlertTriangle className="w-4 h-4 text-red-400 flex-shrink-0" /> {logError}
+                  </div>
+                )}
               </div>
             </div>
 
             <button 
               onClick={handleAudit} 
               disabled={loading}
-              className="w-full py-4 bg-[#4f46e5] hover:bg-[#4338ca] rounded-2xl font-bold text-lg flex justify-center items-center gap-3 transition-all shadow-xl shadow-indigo-500/25 disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer"
+              className="w-full py-4 bg-[#4f46e5] hover:bg-[#4338ca] rounded-2xl font-bold text-lg flex flex-col justify-center items-center gap-2 transition-all shadow-xl shadow-indigo-500/25 disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer"
             >
               {loading ? (
-                <><Loader2 className="animate-spin w-6 h-6" /> Running Compliance Engine...</>
+                <div className="flex flex-col items-center gap-2 w-full px-8">
+                  <div className="flex items-center gap-2 text-white">
+                    <Loader2 className="animate-spin w-5 h-5 text-white" /> 
+                    <span>{uploadProgress < 100 ? `Uploading Files (${uploadProgress}%)` : 'Running AI Compliance Auditor...'}</span>
+                  </div>
+                  <div className="w-full bg-indigo-950/60 rounded-full h-1.5 overflow-hidden">
+                    <div 
+                      className="bg-white h-1.5 transition-all duration-300 rounded-full" 
+                      style={{ width: `${uploadProgress}%` }}
+                    />
+                  </div>
+                </div>
               ) : (
-                <><Upload className="w-6 h-6" /> Run Audit Scan</>
+                <span className="flex items-center gap-3"><Upload className="w-6 h-6" /> Run Audit Scan</span>
               )}
             </button>
 
@@ -559,6 +1100,375 @@ export default function Dashboard({ user, onLogout }) {
         {activeTab === 'compare' && (
           <div className="max-w-7xl mx-auto w-full px-6 md:px-12 py-8 animate-in fade-in zoom-in-95 duration-300">
             <AuditComparison />
+          </div>
+        )}
+
+        {/* VIEW: POLICY ACKNOWLEDGMENTS */}
+        {activeTab === 'acknowledgments' && (
+          <div className="max-w-7xl mx-auto w-full px-6 md:px-12 py-8 animate-in fade-in zoom-in-95 duration-300">
+            {/* View Title */}
+            <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 mb-8">
+              <div>
+                <h1 className="text-4xl font-extrabold text-white tracking-tight flex items-center gap-3">
+                  <Lock className="w-8 h-8 text-indigo-500" /> Policy Acknowledgments
+                </h1>
+                <p className="text-slate-400 text-xs mt-1 font-medium">Verify employee signature status, review defensible electronic sign-off ledgers, and trigger reminders.</p>
+              </div>
+            </div>
+
+            {/* Reminder Status message alert */}
+            {reminderStatusMessage && (
+              <div className="mb-6 p-4 bg-emerald-500/10 border border-emerald-500/30 text-emerald-400 text-sm rounded-xl font-bold animate-pulse">
+                {reminderStatusMessage}
+              </div>
+            )}
+
+            {/* Acknowledgment Stats Row */}
+            <div className="grid grid-cols-2 lg:grid-cols-5 gap-4 mb-6">
+              <div className="bg-[#1e293b] p-5 rounded-2xl border border-slate-700/50">
+                <span className="text-[10px] font-extrabold uppercase text-slate-400 tracking-wider block">Total Required</span>
+                <span className="text-3xl font-extrabold text-white mt-2 block">{totalRequired}</span>
+                <span className="text-[9px] text-slate-500 block mt-1 font-medium">Active pledges</span>
+              </div>
+              <div className="bg-[#1e293b] p-5 rounded-2xl border border-slate-700/50">
+                <span className="text-[10px] font-extrabold uppercase text-slate-400 tracking-wider block">Signed</span>
+                <span className="text-3xl font-extrabold text-emerald-450 mt-2 block">{signedCount}</span>
+                <span className="text-[9px] text-slate-500 block mt-1 font-medium">Completed signs</span>
+              </div>
+              <div className="bg-[#1e293b] p-5 rounded-2xl border border-slate-700/50">
+                <span className="text-[10px] font-extrabold uppercase text-slate-400 tracking-wider block">Pending</span>
+                <span className="text-3xl font-extrabold text-orange-450 mt-2 block">{pendingCount}</span>
+                <span className="text-[9px] text-slate-500 block mt-1 font-medium">Within timeline</span>
+              </div>
+              <div className="bg-[#1e293b] p-5 rounded-2xl border border-slate-700/50">
+                <span className="text-[10px] font-extrabold uppercase text-slate-400 tracking-wider block">Overdue</span>
+                <span className="text-3xl font-extrabold text-red-500 mt-2 block">{overdueAcksCount}</span>
+                <span className="text-[9px] text-slate-500 block mt-1 font-medium">Missed target date</span>
+              </div>
+              <div className="bg-[#1e293b] p-5 rounded-2xl border border-slate-700/50">
+                <span className="text-[10px] font-extrabold uppercase text-slate-400 tracking-wider block">Completion Rate</span>
+                <span className="text-3xl font-extrabold text-indigo-400 mt-2 block">{completionRate}%</span>
+                <span className="text-[9px] text-slate-500 block mt-1 font-medium">Total completion rate</span>
+              </div>
+            </div>
+
+            {/* Table & Filters Card */}
+            <div className="bg-[#1e293b] p-6 md:p-8 rounded-3xl border border-slate-700/50 shadow-xl space-y-6">
+              
+              {/* Header and Toolbar */}
+              <div className="flex flex-col xl:flex-row justify-between items-stretch xl:items-center gap-4 pb-6 border-b border-slate-800">
+                <div>
+                  <h3 className="text-base font-bold text-white flex items-center gap-2">
+                    Acknowledgment Ledger
+                  </h3>
+                  <p className="text-xs text-slate-400 mt-0.5">Showing {filteredHrAcks.length} of {hrAcks.length} logged assignments.</p>
+                </div>
+
+                {/* Filters Toolbar */}
+                <div className="flex flex-wrap items-center gap-3">
+                  {/* Search Employee */}
+                  <div className="relative">
+                    <Search className="w-4 h-4 text-slate-500 absolute left-3 top-3" />
+                    <input 
+                      type="text" 
+                      placeholder="Search employee..." 
+                      value={searchAckEmpQuery}
+                      onChange={(e) => setSearchAckEmpQuery(e.target.value)}
+                      className="w-full sm:w-56 pl-9 pr-3 py-2 bg-slate-900 border border-slate-700 rounded-xl text-xs focus:outline-none focus:ring-2 focus:ring-indigo-500 font-semibold"
+                    />
+                  </div>
+
+                  {/* Policy Filter */}
+                  <select
+                    value={filterAckPolicy}
+                    onChange={(e) => setFilterAckPolicy(e.target.value)}
+                    className="bg-slate-900 border border-slate-700 rounded-xl text-xs px-3 py-2 outline-none focus:ring-2 focus:ring-indigo-500 font-semibold text-slate-300"
+                  >
+                    <option value="ALL">All Policies</option>
+                    <option value="POL-DPP-001">Data Privacy Pledge</option>
+                    <option value="POL-AUP-002">Acceptable Use Policy</option>
+                  </select>
+
+                  {/* Department Filter */}
+                  <select
+                    value={filterAckDept}
+                    onChange={(e) => setFilterAckDept(e.target.value)}
+                    className="bg-slate-900 border border-slate-700 rounded-xl text-xs px-3 py-2 outline-none focus:ring-2 focus:ring-indigo-500 font-semibold text-slate-300"
+                  >
+                    <option value="ALL">All Departments</option>
+                    <option value="IT Ops">IT Ops</option>
+                    <option value="HR">HR</option>
+                    <option value="Finance">Finance</option>
+                    <option value="Sales">Sales</option>
+                  </select>
+
+                  {/* Status Filter */}
+                  <select
+                    value={filterAckStatus}
+                    onChange={(e) => setFilterAckStatus(e.target.value)}
+                    className="bg-slate-900 border border-slate-700 rounded-xl text-xs px-3 py-2 outline-none focus:ring-2 focus:ring-indigo-500 font-semibold text-slate-300"
+                  >
+                    <option value="ALL">All Statuses</option>
+                    <option value="SIGNED">Signed</option>
+                    <option value="PENDING">Pending</option>
+                    <option value="OVERDUE">Overdue</option>
+                  </select>
+                </div>
+              </div>
+
+              {/* Table */}
+              {loadingHrAcks ? (
+                <div className="flex justify-center items-center py-12 gap-3 text-slate-400 text-sm font-semibold">
+                  <Loader2 className="w-5 h-5 text-indigo-500 animate-spin" />
+                  <span>Loading ledger...</span>
+                </div>
+              ) : hrAcksError ? (
+                <div className="p-4 bg-red-500/10 border border-red-500/30 text-red-400 text-center rounded-xl text-xs font-bold">
+                  {hrAcksError}
+                </div>
+              ) : filteredHrAcks.length === 0 ? (
+                <div className="p-12 border border-dashed border-slate-800 text-center text-slate-500 italic text-sm rounded-2xl">
+                  No records match the current filters.
+                </div>
+              ) : (
+                <div className="overflow-x-auto rounded-xl border border-slate-800 bg-[#0b0f1a]/45">
+                  <table className="w-full text-left border-collapse text-xs">
+                    <thead>
+                      <tr className="border-b border-slate-800 bg-[#0f172a]/60 text-slate-400 font-extrabold uppercase tracking-wider">
+                        <th className="py-3 px-4">Employee</th>
+                        <th className="py-3 px-4">Department</th>
+                        <th className="py-3 px-4">Policy Document</th>
+                        <th className="py-3 px-4 text-center">Status</th>
+                        <th className="py-3 px-4">Signed Date (UTC)</th>
+                        <th className="py-3 px-4">Signing IP (HR Visible)</th>
+                        <th className="py-3 px-4">Acknowledgment ID</th>
+                        <th className="py-3 px-4 text-center">Actions</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-slate-850 font-semibold text-slate-300">
+                      {filteredHrAcks.map((row, idx) => {
+                        const isSigned = row.status === 'SIGNED';
+                        const isOverdue = row.status === 'OVERDUE';
+                        
+                        return (
+                          <tr key={idx} className="hover:bg-slate-800/30 transition-colors">
+                            <td className="py-3.5 px-4">
+                              <span className="font-extrabold text-white block">{row.employee_name}</span>
+                              <span className="text-[10px] text-slate-500 block font-mono">ID: {row.employee_id}</span>
+                            </td>
+                            <td className="py-3.5 px-4 font-mono text-[11px]">{row.department}</td>
+                            <td className="py-3.5 px-4">
+                              <span className="font-bold block text-slate-200">{row.policy_title}</span>
+                              <span className="text-[10px] text-slate-500 block font-mono">Ver: {row.policy_version}</span>
+                            </td>
+                            <td className="py-3.5 px-4 text-center">
+                              <span className={cn(
+                                "px-2 py-0.5 rounded text-[9px] font-extrabold border tracking-wider uppercase",
+                                isSigned 
+                                  ? 'bg-emerald-500/10 border-emerald-500/20 text-emerald-455' 
+                                  : isOverdue 
+                                    ? 'bg-red-500/10 border-red-500/20 text-red-400' 
+                                    : 'bg-amber-500/10 border-amber-500/20 text-amber-400'
+                              )}>
+                                {row.status}
+                              </span>
+                            </td>
+                            <td className="py-3.5 px-4 font-mono text-slate-400">
+                              {row.signed_at ? new Date(row.signed_at).toLocaleString() : '—'}
+                            </td>
+                            <td className="py-3.5 px-4 font-mono text-slate-400">
+                              {row.signed_ip_address || '—'}
+                            </td>
+                            <td className="py-3.5 px-4 font-mono text-slate-500">
+                              {row.acknowledgment_id || '—'}
+                            </td>
+                            <td className="py-3.5 px-4 text-center">
+                              {isSigned ? (
+                                <button 
+                                  onClick={() => handleDownloadHrReceipt(row.acknowledgment_id)}
+                                  className="px-3 py-1.5 bg-emerald-600 hover:bg-emerald-500 border border-emerald-500/30 text-white rounded-lg text-[10px] font-bold transition-all cursor-pointer inline-flex items-center gap-1"
+                                >
+                                  <Download className="w-3 h-3" /> Receipt
+                                </button>
+                              ) : (
+                                <button 
+                                  onClick={() => sendReminderNotification(row)}
+                                  className="px-3 py-1.5 bg-indigo-600/10 hover:bg-indigo-600 border border-indigo-500/30 hover:text-white text-indigo-400 rounded-lg text-[10px] font-bold transition-all cursor-pointer"
+                                >
+                                  Remind
+                                </button>
+                              )}
+                            </td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+            </div>
+
+            {/* Disclaimer block */}
+            <div className="mt-6 p-4 rounded-2xl bg-[#1e293b] border border-slate-700/50 shadow-md">
+              <p className="text-[10px] text-slate-500 leading-normal font-semibold">
+                ⚖️ <strong className="text-slate-400">Electronic Compliance Disclosure:</strong> This feature creates an auditable electronic acknowledgment. Legal enforceability depends on applicable law, identity verification, consent requirements, and organization policy.
+              </p>
+            </div>
+          </div>
+        )}
+
+        {/* VIEW: SLA SETTINGS */}
+        {activeTab === 'sla_settings' && (
+          <div className="max-w-7xl mx-auto w-full px-6 md:px-12 py-8 animate-in fade-in zoom-in-95 duration-300">
+            <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 mb-8">
+              <div>
+                <h1 className="text-4xl font-extrabold text-white tracking-tight flex items-center gap-3">
+                  <Clock className="w-8 h-8 text-indigo-500" /> SLA & Escalations
+                </h1>
+                <p className="text-slate-400 text-xs mt-1 font-medium">Customize response/resolution SLA policies, mock escalation emails, and test time limits.</p>
+              </div>
+
+              {/* Run SLA check button */}
+              <button 
+                onClick={triggerSlaEvaluationChecker}
+                disabled={loadingSlaSettings}
+                className="px-4 py-2.5 bg-slate-800 hover:bg-slate-750 border border-slate-700 text-indigo-400 rounded-xl text-xs font-bold transition-all cursor-pointer inline-flex items-center gap-1.5 font-sans"
+              >
+                <Loader2 className={`w-3.5 h-3.5 ${loadingSlaSummary ? 'animate-spin' : ''}`} />
+                Force Run SLA Check
+              </button>
+            </div>
+
+            {slaSettingsError && (
+              <div className="mb-6 p-4 bg-red-500/10 border border-red-500/30 text-red-400 text-xs rounded-xl font-bold">
+                {slaSettingsError}
+              </div>
+            )}
+            {slaSettingsSaveSuccess && (
+              <div className="mb-6 p-4 bg-emerald-500/10 border border-emerald-500/30 text-emerald-450 text-xs rounded-xl font-bold">
+                {slaSettingsSaveSuccess}
+              </div>
+            )}
+
+            {loadingSlaSettings || !slaSettings ? (
+              <div className="flex justify-center items-center py-12 gap-3 text-slate-400 text-sm font-semibold">
+                <Loader2 className="w-6 h-6 text-indigo-500 animate-spin" />
+                <span>Loading settings...</span>
+              </div>
+            ) : (
+              <div className="space-y-6">
+                {/* Short durations toggle card */}
+                <div className="bg-[#1e293b] p-6 rounded-3xl border border-slate-700/50 shadow-md flex items-center justify-between">
+                  <div className="space-y-1">
+                    <h3 className="text-sm font-bold text-white">Enable Short Demo SLA Durations</h3>
+                    <p className="text-[10px] text-slate-400 font-medium">Accelerates thresholds for testing: Critical = 2 mins (Warning at 1m), High = 5 mins (Warning at 2.5m). Level 2 escalations fire after 2 mins.</p>
+                  </div>
+                  <label className="relative inline-flex items-center cursor-pointer select-none">
+                    <input 
+                      type="checkbox" 
+                      checked={slaSettings.use_short_demo_durations}
+                      onChange={(e) => {
+                        const copy = { ...slaSettings, use_short_demo_durations: e.target.checked };
+                        setSlaSettings(copy);
+                        saveSlaSettings(copy);
+                      }}
+                      className="sr-only peer" 
+                    />
+                    <div className="w-11 h-6 bg-slate-800 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-slate-400 after:border-slate-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-indigo-600 peer-checked:after:bg-white"></div>
+                  </label>
+                </div>
+
+                {/* Severities grid config */}
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                  {Object.keys(slaSettings.rules).map((sev) => {
+                    const rule = slaSettings.rules[sev];
+                    const hasAck = ['CRITICAL', 'HIGH'].includes(sev);
+                    
+                    return (
+                      <div key={sev} className="bg-[#1e293b] p-6 rounded-3xl border border-slate-700/50 shadow-xl space-y-4 relative overflow-hidden">
+                        <div className="absolute top-0 left-0 w-1 h-full bg-indigo-500"></div>
+                        <h3 className="text-sm font-extrabold text-white uppercase tracking-wider">{sev} Severity Policy</h3>
+                        
+                        <div className="space-y-3 text-xs">
+                          {hasAck && (
+                            <div>
+                              <label className="block text-[10px] text-slate-400 font-bold mb-1">Acknowledgment Deadline (Hours)</label>
+                              <input 
+                                type="number" 
+                                value={rule.acknowledgment_limit_hours}
+                                onChange={(e) => {
+                                  const val = parseFloat(e.target.value) || 0;
+                                  const copy = { ...slaSettings };
+                                  copy.rules[sev].acknowledgment_limit_hours = val;
+                                  setSlaSettings(copy);
+                                }}
+                                className="w-full px-3 py-2 bg-slate-900 border border-slate-800 rounded-xl text-slate-300 font-semibold focus:outline-none focus:ring-1 focus:ring-indigo-500"
+                              />
+                            </div>
+                          )}
+
+                          <div>
+                            <label className="block text-[10px] text-slate-400 font-bold mb-1">Resolution Deadline (Hours)</label>
+                            <input 
+                              type="number" 
+                              value={rule.resolution_limit_hours}
+                              onChange={(e) => {
+                                const val = parseFloat(e.target.value) || 0;
+                                const copy = { ...slaSettings };
+                                copy.rules[sev].resolution_limit_hours = val;
+                                setSlaSettings(copy);
+                              }}
+                              className="w-full px-3 py-2 bg-slate-900 border border-slate-800 rounded-xl text-slate-300 font-semibold focus:outline-none focus:ring-1 focus:ring-indigo-500"
+                            />
+                          </div>
+
+                          <div className="border-t border-slate-800/80 pt-3 space-y-3">
+                            <span className="text-[9px] uppercase font-bold text-slate-400 tracking-wider block">Escalation Routing (Level 1)</span>
+                            
+                            <div>
+                              <label className="block text-[10px] text-slate-400 font-bold mb-1">Recipient Name</label>
+                              <input 
+                                type="text" 
+                                value={rule.escalation_recipient_name}
+                                onChange={(e) => {
+                                  const copy = { ...slaSettings };
+                                  copy.rules[sev].escalation_recipient_name = e.target.value;
+                                  setSlaSettings(copy);
+                                }}
+                                className="w-full px-3 py-2 bg-slate-900 border border-slate-850 rounded-xl text-slate-300 font-semibold focus:outline-none focus:ring-1 focus:ring-indigo-500"
+                              />
+                            </div>
+
+                            <div>
+                              <label className="block text-[10px] text-slate-400 font-bold mb-1">Recipient Email</label>
+                              <input 
+                                type="email" 
+                                value={rule.escalation_recipient_email}
+                                onChange={(e) => {
+                                  const copy = { ...slaSettings };
+                                  copy.rules[sev].escalation_recipient_email = e.target.value;
+                                  setSlaSettings(copy);
+                                }}
+                                className="w-full px-3 py-2 bg-slate-900 border border-slate-855 rounded-xl text-slate-300 font-semibold focus:outline-none focus:ring-1 focus:ring-indigo-500"
+                              />
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+
+                <div className="flex justify-end gap-3 pt-4">
+                  <button
+                    onClick={() => saveSlaSettings(slaSettings)}
+                    className="px-6 py-3 bg-[#4f46e5] hover:bg-[#4338ca] text-white text-xs font-bold rounded-xl cursor-pointer shadow-lg shadow-indigo-500/25 transition-all"
+                  >
+                    Save & Re-evaluate Active Pledges
+                  </button>
+                </div>
+              </div>
+            )}
           </div>
         )}
 
@@ -646,17 +1556,22 @@ export default function Dashboard({ user, onLogout }) {
                   <h2 className="text-4xl font-extrabold text-[#1e293b]">Compliance Dashboard</h2>
                 </div>
                 
-                <button
-                  onClick={exportPDF}
-                  disabled={pdfGenerating}
-                  className="no-print bg-[#059669] hover:bg-[#047857] text-white px-6 py-3 rounded-xl font-bold flex items-center gap-3 transition-all shadow-lg shadow-emerald-500/20 cursor-pointer disabled:opacity-50"
-                >
-                  {pdfGenerating ? (
-                    <><Loader2 className="w-5 h-5 animate-spin" /> Generating PDF...</>
-                  ) : (
-                    <><Download className="w-5 h-5" /> Export PDF Report</>
+                <div className="flex flex-col items-end gap-1.5 no-print">
+                  <button
+                    onClick={exportPDF}
+                    disabled={pdfGenerating}
+                    className="bg-[#059669] hover:bg-[#047857] text-white px-6 py-3 rounded-xl font-bold flex items-center gap-3 transition-all shadow-lg shadow-emerald-500/20 cursor-pointer disabled:opacity-50"
+                  >
+                    {pdfGenerating ? (
+                      <><Loader2 className="w-5 h-5 animate-spin" /> Generating Report...</>
+                    ) : (
+                      <><Download className="w-5 h-5" /> Export PDF Report</>
+                    )}
+                  </button>
+                  {pdfError && (
+                    <span className="text-xs text-red-500 font-semibold block">{pdfError}</span>
                   )}
-                </button>
+                </div>
               </div>
 
               {/* HACKATHON COMPLIANCE SIMULATOR BANNER */}
@@ -718,6 +1633,102 @@ export default function Dashboard({ user, onLogout }) {
                   </div>
                   <div className="text-[10px] font-bold uppercase tracking-wider text-slate-400 bg-indigo-500/15 border border-indigo-500/25 px-3.5 py-2 rounded-xl self-stretch sm:self-auto flex items-center justify-center text-center animate-pulse">
                     Mock Queue Active
+                  </div>
+                </div>
+              )}
+
+              {/* Remediation Lifecycle Metrics Grid */}
+              <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6 no-print">
+                <div className="bg-[#0f172a]/95 border border-slate-800 p-5 rounded-2xl shadow-md">
+                  <span className="text-[10px] font-extrabold uppercase text-slate-400 tracking-wider block">Open Violations</span>
+                  <span className="text-3xl font-extrabold text-red-500 mt-2 block">{openViolationsCount}</span>
+                  <span className="text-[9px] text-slate-500 block mt-1 font-medium">Require action</span>
+                </div>
+                
+                <div className="bg-[#0f172a]/95 border border-slate-800 p-5 rounded-2xl shadow-md">
+                  <span className="text-[10px] font-extrabold uppercase text-slate-400 tracking-wider block">Pending Verification</span>
+                  <span className="text-3xl font-extrabold text-orange-500 mt-2 block">{pendingVerificationCount}</span>
+                  <span className="text-[9px] text-slate-500 block mt-1 font-medium">Awaiting reviewer approval</span>
+                </div>
+
+                <div className="bg-[#0f172a]/95 border border-slate-800 p-5 rounded-2xl shadow-md">
+                  <span className="text-[10px] font-extrabold uppercase text-slate-400 tracking-wider block">Overdue Remediation</span>
+                  <span className="text-3xl font-extrabold text-amber-500 mt-2 block">{overdueCount}</span>
+                  <span className="text-[9px] text-slate-500 block mt-1 font-medium">Exceeded target due date</span>
+                </div>
+
+                <div className="bg-[#0f172a]/95 border border-slate-800 p-5 rounded-2xl shadow-md">
+                  <span className="text-[10px] font-extrabold uppercase text-slate-400 tracking-wider block">Resolved This Month</span>
+                  <span className="text-3xl font-extrabold text-emerald-500 mt-2 block">{resolvedThisMonthCount}</span>
+                  <span className="text-[9px] text-slate-500 block mt-1 font-medium">Verified resolved</span>
+                </div>
+              </div>
+
+              {/* SLA & Escalations Overview Widget */}
+              {slaSummary && (
+                <div className="mb-6 bg-slate-900 border border-slate-800 rounded-3xl p-6 shadow-xl relative overflow-hidden group">
+                  <div className="absolute top-0 left-0 w-1.5 h-full bg-indigo-500"></div>
+                  
+                  <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 border-b border-slate-800 pb-4 mb-4">
+                    <div>
+                      <h3 className="text-sm font-extrabold text-white flex items-center gap-2">
+                        <Clock className="w-5 h-5 text-indigo-400" />
+                        Remediation SLA & Escalation Automation
+                      </h3>
+                      <p className="text-[10px] text-slate-400 font-medium">Automatic warning reminders and department lead escalations for unacknowledged and breached findings.</p>
+                    </div>
+
+                    <button 
+                      onClick={triggerSlaEvaluationChecker}
+                      disabled={loadingSlaSummary}
+                      className="px-3.5 py-2 bg-indigo-600 hover:bg-indigo-550 border border-indigo-500/20 text-white rounded-xl text-xs font-bold transition-all cursor-pointer inline-flex items-center gap-1.5 font-sans shadow-md"
+                    >
+                      <Loader2 className={`w-3.5 h-3.5 ${loadingSlaSummary ? 'animate-spin' : ''}`} />
+                      Evaluate SLAs Now
+                    </button>
+                  </div>
+
+                  <div className="grid grid-cols-2 lg:grid-cols-6 gap-4">
+                    <div className="bg-[#0b0f1a] border border-slate-850 p-4 rounded-2xl flex flex-col justify-between">
+                      <span className="text-[9px] font-extrabold text-slate-400 uppercase tracking-wide">Crit Unack</span>
+                      <span className="text-2xl font-extrabold text-white block mt-2">{slaSummary.critical_unacknowledged_count}</span>
+                      <span className="text-[8px] text-slate-500 font-medium block mt-1">Needs Acknowledge</span>
+                    </div>
+
+                    <div className="bg-[#0b0f1a] border border-slate-850 p-4 rounded-2xl flex flex-col justify-between">
+                      <span className="text-[9px] font-extrabold text-slate-400 uppercase tracking-wide">Near Breach</span>
+                      <span className="text-2xl font-extrabold text-amber-400 block mt-2">{slaSummary.near_breach_count}</span>
+                      <span className="text-[8px] text-slate-500 font-medium block mt-1">50% or 80% consumed</span>
+                    </div>
+
+                    <div className="bg-[#0b0f1a] border border-slate-850 p-4 rounded-2xl flex flex-col justify-between">
+                      <span className="text-[9px] font-extrabold text-slate-400 uppercase tracking-wide">SLA Breached</span>
+                      <span className="text-2xl font-extrabold text-red-500 block mt-2">{slaSummary.breached_count}</span>
+                      <span className="text-[8px] text-slate-500 font-medium block mt-1">Overdue resolution</span>
+                    </div>
+
+                    <div className="bg-[#0b0f1a] border border-slate-850 p-4 rounded-2xl flex flex-col justify-between">
+                      <span className="text-[9px] font-extrabold text-slate-400 uppercase tracking-wide">Escalations</span>
+                      <span className="text-2xl font-extrabold text-purple-400 block mt-2">{slaSummary.escalated_count}</span>
+                      <span className="text-[8px] text-slate-500 font-medium block mt-1">Lead or compliance notified</span>
+                    </div>
+
+                    <div className="bg-[#0b0f1a] border border-slate-850 p-4 rounded-2xl flex flex-col justify-between">
+                      <span className="text-[9px] font-extrabold text-slate-400 uppercase tracking-wide">Avg Remediation</span>
+                      <span className="text-2xl font-extrabold text-emerald-450 block mt-2">{slaSummary.avg_remediation_hours}h</span>
+                      <span className="text-[8px] text-slate-500 font-medium block mt-1">Mean resolve time</span>
+                    </div>
+
+                    <div className="bg-[#0b0f1a] border border-slate-850 p-4 rounded-2xl flex flex-col justify-between">
+                      <span className="text-[9px] font-extrabold text-slate-400 uppercase tracking-wide">Top Overdue Dept</span>
+                      <span className="text-xs font-bold text-indigo-400 block mt-3.5 truncate">
+                        {Object.keys(slaSummary.departments_overdue).length > 0
+                          ? `${Object.keys(slaSummary.departments_overdue)[0]} (${Object.values(slaSummary.departments_overdue)[0]})`
+                          : 'None'
+                        }
+                      </span>
+                      <span className="text-[8px] text-slate-500 font-medium block mt-1.5">Max breached tickets</span>
+                    </div>
                   </div>
                 </div>
               )}
@@ -815,34 +1826,39 @@ export default function Dashboard({ user, onLogout }) {
                   </div>
                   
                   <div className="space-y-3 no-print">
-                    <div className="flex gap-3">
-                      <button
-                        onClick={exportPDF}
-                        disabled={pdfGenerating}
-                        className="flex-1 bg-[#059669] hover:bg-[#047857] text-white py-3 px-4 rounded-xl font-bold text-sm flex items-center justify-center gap-2 transition-all shadow-lg shadow-emerald-500/10 cursor-pointer disabled:opacity-50"
-                      >
-                        {pdfGenerating ? (
-                          <><Loader2 className="w-4 h-4 animate-spin" /> Generating...</>
-                        ) : (
-                          <><Download className="w-4 h-4" /> Export PDF</>
-                        )}
-                      </button>
-                      
-                      <button
-                        onClick={exportCSV}
-                        disabled={csvExporting}
-                        className="flex-1 bg-indigo-600 hover:bg-indigo-700 text-white py-3 px-4 rounded-xl font-bold text-sm flex items-center justify-center gap-2 transition-all shadow-lg shadow-indigo-500/10 cursor-pointer disabled:opacity-50"
-                      >
-                        {csvExporting ? (
-                          <><Loader2 className="w-4 h-4 animate-spin" /> Preparing...</>
-                        ) : (
-                          <><FileSpreadsheet className="w-4 h-4" /> Export CSV</>
-                        )}
-                      </button>
+                    <div className="flex flex-col gap-1.5">
+                      <div className="flex gap-3">
+                        <button
+                          onClick={exportPDF}
+                          disabled={pdfGenerating}
+                          className="flex-1 bg-[#059669] hover:bg-[#047857] text-white py-3 px-4 rounded-xl font-bold text-sm flex items-center justify-center gap-2 transition-all shadow-lg shadow-emerald-500/10 cursor-pointer disabled:opacity-50"
+                        >
+                          {pdfGenerating ? (
+                            <><Loader2 className="w-4 h-4 animate-spin" /> Generating Report...</>
+                          ) : (
+                            <><Download className="w-4 h-4" /> Export PDF</>
+                          )}
+                        </button>
+                        
+                        <button
+                          onClick={exportCSV}
+                          disabled={csvExporting}
+                          className="flex-1 bg-indigo-600 hover:bg-indigo-700 text-white py-3 px-4 rounded-xl font-bold text-sm flex items-center justify-center gap-2 transition-all shadow-lg shadow-indigo-500/10 cursor-pointer disabled:opacity-50"
+                        >
+                          {csvExporting ? (
+                            <><Loader2 className="w-4 h-4 animate-spin" /> Preparing...</>
+                          ) : (
+                            <><FileSpreadsheet className="w-4 h-4" /> Export CSV</>
+                          )}
+                        </button>
+                      </div>
+                      {pdfError && (
+                        <div className="text-xs text-red-500 font-semibold text-center mt-1">{pdfError}</div>
+                      )}
                     </div>
                     
                     <button
-                      onClick={() => { setActiveTab('new_audit'); setAuditData(null); }}
+                      onClick={() => { setActiveTab('new_audit'); setAuditData(null); setPolicyFiles([]); setLogFiles([]); }}
                       className="w-full bg-slate-800 hover:bg-slate-900 text-white py-3 rounded-xl font-bold text-sm flex items-center justify-center gap-2 transition-colors cursor-pointer"
                     >
                       <PlusCircle className="w-4 h-4 text-indigo-400" /> Run New Scan
@@ -901,9 +1917,81 @@ export default function Dashboard({ user, onLogout }) {
                       <option value="ALL">All Statuses</option>
                       <option value="OPEN">Open</option>
                       <option value="IN_PROGRESS">In Progress</option>
-                      <option value="MITIGATED">Mitigated</option>
-                      <option value="FALSE_POSITIVE">False Positive</option>
+                      <option value="PENDING_VERIFICATION">Pending Verification</option>
+                      <option value="RESOLVED">Resolved</option>
+                      <option value="REQUIRES_CHANGES">Requires Changes</option>
+                      <option value="REOPENED">Reopened</option>
                     </select>
+
+                    {/* Assigned Employee Dropdown */}
+                    <select
+                      value={filterEmployee}
+                      onChange={(e) => setFilterEmployee(e.target.value)}
+                      className="bg-slate-50 border border-slate-300 rounded-xl text-sm px-3 py-2 outline-none focus:ring-2 focus:ring-indigo-500 font-semibold text-slate-700"
+                    >
+                      <option value="ALL">All Employees</option>
+                      <option value="EMP-3430">Ross (EMP-3430)</option>
+                    </select>
+
+                    {/* Overdue Dropdown */}
+                    <select
+                      value={filterOverdue}
+                      onChange={(e) => setFilterOverdue(e.target.value)}
+                      className="bg-slate-50 border border-slate-300 rounded-xl text-sm px-3 py-2 outline-none focus:ring-2 focus:ring-indigo-500 font-semibold text-slate-700"
+                    >
+                      <option value="ALL">All Timelines</option>
+                      <option value="OVERDUE">Overdue Only</option>
+                    </select>
+
+                    {/* SLA Status Filter */}
+                    <select
+                      value={filterSlaState}
+                      onChange={(e) => setFilterSlaState(e.target.value)}
+                      className="bg-slate-50 border border-slate-300 rounded-xl text-sm px-3 py-2 outline-none focus:ring-2 focus:ring-indigo-500 font-semibold text-slate-700"
+                    >
+                      <option value="ALL">All SLA Statuses</option>
+                      <option value="ON_TRACK">On Track</option>
+                      <option value="NEAR_BREACH">Near Breach</option>
+                      <option value="BREACHED">Breached</option>
+                      <option value="ESCALATED">Escalated</option>
+                    </select>
+
+                    {/* Quick SLA Toggle Buttons */}
+                    <div className="flex items-center gap-2">
+                      <button
+                        type="button"
+                        onClick={() => setFilterSlaState(prev => prev === 'NEAR_BREACH' ? 'ALL' : 'NEAR_BREACH')}
+                        className={`px-3.5 py-1.5 rounded-full text-xs font-bold border transition-all cursor-pointer ${
+                          filterSlaState === 'NEAR_BREACH'
+                            ? 'bg-amber-100 border-amber-300 text-amber-800 shadow-sm'
+                            : 'bg-slate-50 border-slate-200 text-slate-600 hover:bg-slate-100'
+                        }`}
+                      >
+                        Near Breach
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setFilterSlaState(prev => prev === 'BREACHED' ? 'ALL' : 'BREACHED')}
+                        className={`px-3.5 py-1.5 rounded-full text-xs font-bold border transition-all cursor-pointer ${
+                          filterSlaState === 'BREACHED'
+                            ? 'bg-red-100 border-red-300 text-red-800 shadow-sm'
+                            : 'bg-slate-50 border-slate-200 text-slate-600 hover:bg-slate-100'
+                        }`}
+                      >
+                        Breached
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setFilterSlaState(prev => prev === 'ESCALATED' ? 'ALL' : 'ESCALATED')}
+                        className={`px-3.5 py-1.5 rounded-full text-xs font-bold border transition-all cursor-pointer ${
+                          filterSlaState === 'ESCALATED'
+                            ? 'bg-purple-100 border-purple-300 text-purple-800 shadow-sm'
+                            : 'bg-slate-50 border-slate-200 text-slate-600 hover:bg-slate-100'
+                        }`}
+                      >
+                        Escalated
+                      </button>
+                    </div>
 
                     {/* Sort Dropdown */}
                     <div className="flex items-center gap-1 bg-slate-50 border border-slate-300 rounded-xl px-2">
@@ -925,6 +2013,9 @@ export default function Dashboard({ user, onLogout }) {
                         <ArrowUpDown className="w-4 h-4" />
                       </button>
                     </div>
+                    {pdfError && (
+                      <div className="text-xs text-red-500 font-semibold text-center mt-1">{pdfError}</div>
+                    )}
                   </div>
                 </div>
 
@@ -970,11 +2061,12 @@ export default function Dashboard({ user, onLogout }) {
                               <th className="p-4 font-semibold">Rule Violated</th>
                               <th className="p-4 font-semibold w-24 text-center">Severity</th>
                               <th className="p-4 font-semibold w-32 text-center">Status</th>
+                              <th className="p-4 font-semibold w-48 text-center">SLA Status</th>
                               <th className="p-4 font-semibold rounded-tr-xl w-24 text-center no-print">Actions</th>
                             </tr>
                           </thead>
                           <tbody className="divide-y divide-slate-100">
-                            {sortedViolations.map((v, i) => {
+                            {violationsToRender.map((v, i) => {
                               const sev = (v.severity || 'LOW').toUpperCase();
                               const sevBadges = {
                                 CRITICAL: 'bg-red-100 text-red-800 border-red-200',
@@ -998,6 +2090,11 @@ export default function Dashboard({ user, onLogout }) {
                                   <td className="p-4">
                                     <div className="font-semibold text-slate-800">{v.rule_violated}</div>
                                     <div className="text-slate-400 text-xs mt-0.5 line-clamp-1">{v.explanation}</div>
+                                    {v.sla && ['CRITICAL', 'HIGH'].includes(sev) && (
+                                      <div className="max-w-xs mt-1.5 no-print">
+                                        <SLAStatusIndicator sla={v.sla} severity={v.severity} />
+                                      </div>
+                                    )}
                                   </td>
                                   <td className="p-4 text-center">
                                     <span className={`px-2.5 py-1 rounded-full text-xs font-bold border ${
@@ -1013,12 +2110,13 @@ export default function Dashboard({ user, onLogout }) {
                                       {stat.replace('_', ' ')}
                                     </span>
                                   </td>
+                                  <td className="p-4 text-center">
+                                    {renderSlaBadge(v.sla)}
+                                  </td>
                                   <td className="p-4 text-center no-print">
                                     <button
                                       onClick={() => {
                                         setSelectedViolation(v);
-                                        setMitigationStatus(v.status || 'OPEN');
-                                        setMitigationNotes(v.mitigation_notes || '');
                                       }}
                                       className="text-xs font-bold text-indigo-600 bg-indigo-50 border border-indigo-100 hover:bg-indigo-100 px-3 py-1.5 rounded-lg transition-colors cursor-pointer inline-flex items-center gap-1"
                                     >
@@ -1031,6 +2129,14 @@ export default function Dashboard({ user, onLogout }) {
                           </tbody>
                         </table>
                       </div>
+                    )}
+                    {visibleViolationsCount < sortedViolations.length && (
+                      <button 
+                        onClick={() => setVisibleViolationsCount(prev => prev + 10)}
+                        className="w-full mt-4 py-3.5 bg-slate-800 hover:bg-slate-750 text-indigo-400 border border-slate-700/50 rounded-xl font-bold text-sm transition-colors cursor-pointer text-center no-print shadow-md"
+                      >
+                        Load More Violations (+10)
+                      </button>
                     )}
                   </div>
 
@@ -1048,16 +2154,79 @@ export default function Dashboard({ user, onLogout }) {
 
       {/* MITIGATION DETAILS MODAL / DRAWER */}
       {selectedViolation && (
-        <DrillDownModal
+        <MitigationModal
           violation={selectedViolation}
+          user={user}
           onClose={() => setSelectedViolation(null)}
-          mitigationStatus={mitigationStatus}
-          setMitigationStatus={setMitigationStatus}
-          mitigationNotes={mitigationNotes}
-          setMitigationNotes={setMitigationNotes}
-          onSave={handleSaveMitigation}
-          saving={savingMitigation}
+          onStatusChanged={fetchViolations}
         />
+      )}
+
+      {/* Offscreen Printable Report */}
+      <PrintableAuditReport auditData={activeAuditData} />
+
+      {/* Offscreen Acknowledgment Receipt PDF Download for HR */}
+      {selectedReceiptForDownload && (
+        <div className="absolute top-[-9999px] left-[-9999px]">
+          <div className="p-8 bg-white text-slate-800 border border-slate-200 space-y-6 w-[8.5in]" id="hr-acknowledgment-receipt-pdf-download">
+            <div className="border-b-2 border-slate-300 pb-4 flex justify-between items-start">
+              <div>
+                <h3 className="text-lg font-extrabold text-slate-900 tracking-tight">Security-HQ Compliance & Auditing Portal</h3>
+                <p className="text-xs text-slate-500 font-bold uppercase tracking-wider">ELECTRONIC PLEDGE ACKNOWLEDGMENT SYSTEM</p>
+              </div>
+              <span className="px-3 py-1.5 text-xs font-extrabold tracking-wider bg-emerald-100 text-emerald-800 rounded border border-emerald-300 uppercase">
+                {selectedReceiptForDownload.status}
+              </span>
+            </div>
+
+            <div className="grid grid-cols-2 gap-6 text-sm font-semibold">
+              <div>
+                <span className="block text-xs uppercase tracking-wider text-slate-400">Acknowledgment ID</span>
+                <span className="text-slate-900 font-mono mt-0.5 block">{selectedReceiptForDownload.acknowledgment_id}</span>
+              </div>
+              <div>
+                <span className="block text-xs uppercase tracking-wider text-slate-400">Signed Timestamp (UTC)</span>
+                <span className="text-slate-900 mt-0.5 block">{selectedReceiptForDownload.signed_at}</span>
+              </div>
+              <div>
+                <span className="block text-xs uppercase tracking-wider text-slate-400">Signer Profile</span>
+                <span className="text-slate-900 mt-0.5 block">{selectedReceiptForDownload.employee_name} ({selectedReceiptForDownload.employee_id})</span>
+              </div>
+              <div>
+                <span className="block text-xs uppercase tracking-wider text-slate-400">Registered Email</span>
+                <span className="text-slate-900 mt-0.5 block">{selectedReceiptForDownload.employee_email}</span>
+              </div>
+              <div className="col-span-2 border-t border-slate-200 pt-3">
+                <span className="block text-xs uppercase tracking-wider text-slate-400">Policy Title & Reference</span>
+                <span className="text-slate-900 mt-0.5 block font-bold text-base">{selectedReceiptForDownload.policy_id} - Corporate Compliance Agreement</span>
+              </div>
+              <div>
+                <span className="block text-xs uppercase tracking-wider text-slate-400">Document Signature Type</span>
+                <span className="text-slate-900 mt-0.5 block">{selectedReceiptForDownload.signature_type} (Typed signature matching legal name)</span>
+              </div>
+              <div>
+                <span className="block text-xs uppercase tracking-wider text-slate-400">Client Source IP (HR Auditor Logged)</span>
+                <span className="text-slate-900 mt-0.5 block font-mono">{selectedReceiptForDownload.signed_ip_address}</span>
+              </div>
+              <div className="col-span-2 border-t border-slate-200 pt-3">
+                <span className="block text-xs uppercase tracking-wider text-slate-400">Policy Document SHA-256 Fingerprint</span>
+                <span className="text-sm text-slate-700 font-mono mt-0.5 block break-all">
+                  {selectedReceiptForDownload.policy_document_sha256}
+                </span>
+              </div>
+              <div className="col-span-2 border-t border-slate-200 pt-3">
+                <span className="block text-xs uppercase tracking-wider text-slate-400">Tamper-Evident Cryptographic Hash</span>
+                <span className="text-sm text-slate-700 font-mono mt-0.5 block break-all font-bold">
+                  {selectedReceiptForDownload.receipt_hash}
+                </span>
+              </div>
+            </div>
+
+            <div className="border-t-2 border-slate-300 pt-4 text-xs text-slate-500 text-center leading-relaxed font-medium">
+              This document constitutes a binding record of electronic acknowledgment under standard identity verification and organization policy rules. Tamper-evident audits check hashes dynamically on every session.
+            </div>
+          </div>
+        </div>
       )}
     </div>
   );

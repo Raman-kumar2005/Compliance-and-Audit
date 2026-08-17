@@ -1,65 +1,82 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import { 
-  LogOut, ShieldAlert, CheckCircle2, User, Building, AlertTriangle, 
-  Clock, CheckSquare, Square, Zap, Info, Sparkles 
+  LogOut, ShieldAlert, CheckCircle2, User, Clock, Loader2, Lock 
 } from 'lucide-react';
-import DrillDownModal from './DrillDownModal';
+import axios from 'axios';
+import MitigationModal from './MitigationModal';
+import PolicyAcknowledgmentModal from './PolicyAcknowledgmentModal';
+import SLAStatusIndicator from './SLAStatusIndicator';
 import { cn } from '../lib/utils';
+
+const BACKEND_URL = 'http://127.0.0.1:8000/api';
 
 export default function EmployeeDashboard({ user, onLogout }) {
   const [selectedViolation, setSelectedViolation] = useState(null);
+  const [violations, setViolations] = useState([]);
+  const [loadingViolations, setLoadingViolations] = useState(false);
+  const [error, setError] = useState('');
+  
+  // Policy Acknowledgment states
+  const [assignedPolicies, setAssignedPolicies] = useState([]);
+  const [loadingPolicies, setLoadingPolicies] = useState(false);
+  const [policiesError, setPoliciesError] = useState('');
+  const [selectedPolicyForSign, setSelectedPolicyForSign] = useState(null);
+
   const [tasks, setTasks] = useState([
     { id: 1, text: 'Complete mandatory Policy 4.3 Training (Security Awareness)', completed: false, severity: 'Medium' },
     { id: 2, text: 'Sign off on updated corporate Data Privacy Pledge', completed: true, severity: 'Low' },
     { id: 3, text: 'Acknowledge E-ROSS session authorization key refresh request', completed: false, severity: 'High' }
   ]);
 
-  // Reroute simulation support states (local modal states)
-  const [mitigationStatus, setMitigationStatus] = useState('OPEN');
-  const [mitigationNotes, setMitigationNotes] = useState('');
-  const [saving, setSaving] = useState(false);
-
-  // Extract mock personal compliance logs
   const employeeEmail = user?.email || 'employee.ross@security-hq.com';
-  const employeeId = employeeEmail.split('@')[0].toUpperCase();
 
-  // Mock employee violations registry (cohesive and linked to Ross)
-  const personalViolations = useMemo(() => [
-    {
-      id: "emp-204",
-      employee: employeeId,
-      department: "Sales & Marketing",
-      rule_violated: "Policy 4.3 - Training Completion Requirements",
-      log_entry: `Employee ID: ${employeeId}, DepartmentType: Sales, Training Date: 12-Feb-26, Status: Incomplete`,
-      severity: "Medium",
-      explanation: "Employee Ross's security training is marked 'Incomplete' after exceeding the standard 60-day company requirement.",
-      recommendation: "Immediately access the training portal and complete the module by the end of the current cycle.",
-      status: "OPEN",
-      mitigation_notes: ""
-    },
-    {
-      id: "emp-209",
-      employee: employeeId,
-      department: "IT Ops (Temporary)",
-      rule_violated: "Policy 3.2 - Open Access Key in Version Control",
-      log_entry: `GitHub Commit push: Repo 'ross-analytics-dashboard', File: 'env.local', Secret: 'sk_live_...2ross'`,
-      severity: "High",
-      explanation: "An active access key 'sk_live_...2ross' was committed to a public Git repository. High leak hazard.",
-      recommendation: "Rotate the access secret immediately and delete the GitHub commit log history.",
-      status: "IN_PROGRESS",
-      mitigation_notes: "Key rotation initiated by Ross. Awaiting final token verification."
+  const authHeader = useMemo(() => {
+    return { Authorization: `Bearer ${employeeEmail}:${user?.role || 'Employee'}` };
+  }, [employeeEmail, user]);
+
+  const fetchViolations = async () => {
+    setLoadingViolations(true);
+    setError('');
+    try {
+      const response = await axios.get(`${BACKEND_URL}/violations`, { headers: authHeader });
+      setViolations(response.data);
+    } catch (err) {
+      console.error("Failed to load employee violations:", err);
+      setError("Failed to fetch assigned violations. Showing offline mock details.");
+    } finally {
+      setLoadingViolations(false);
     }
-  ], [employeeId]);
+  };
+
+  const fetchAssignedPolicies = async () => {
+    setLoadingPolicies(true);
+    setPoliciesError('');
+    try {
+      const response = await axios.get(`${BACKEND_URL}/policies/assigned-to-me`, { headers: authHeader });
+      setAssignedPolicies(response.data);
+    } catch (err) {
+      console.error("Failed to load assigned policies:", err);
+      setPoliciesError("Failed to load assigned policy guidelines.");
+    } finally {
+      setLoadingPolicies(false);
+    }
+  };
+
+  useEffect(() => {
+    fetchViolations();
+    fetchAssignedPolicies();
+  }, [employeeEmail]);
 
   // Compute a personal compliance score based on task completions and alerts
   const personalComplianceScore = useMemo(() => {
     const uncompletedTasksCount = tasks.filter(t => !t.completed).length;
-    const activeViolationsCount = personalViolations.filter(v => v.status === 'OPEN').length;
+    const activeViolationsCount = violations.filter(v => v.status === 'OPEN' || v.status === 'IN_PROGRESS' || v.status === 'REQUIRES_CHANGES').length;
+    const unsignedPoliciesCount = assignedPolicies.filter(p => p.status !== 'SIGNED').length;
     
     // Base 100, deduct points
-    const score = 100 - (uncompletedTasksCount * 5) - (activeViolationsCount * 12);
+    const score = 100 - (uncompletedTasksCount * 5) - (activeViolationsCount * 12) - (unsignedPoliciesCount * 8);
     return Math.max(0, score);
-  }, [tasks, personalViolations]);
+  }, [tasks, violations, assignedPolicies]);
 
   const toggleTask = (taskId) => {
     setTasks(prev => prev.map(t => {
@@ -68,22 +85,6 @@ export default function EmployeeDashboard({ user, onLogout }) {
       }
       return t;
     }));
-  };
-
-  const handleSaveMitigation = () => {
-    if (!selectedViolation) return;
-    setSaving(true);
-    
-    setTimeout(() => {
-      setSaving(false);
-      // Simulate saving to local state
-      const updated = personalViolations.find(v => v.id === selectedViolation.id);
-      if (updated) {
-        updated.status = mitigationStatus;
-        updated.mitigation_notes = mitigationNotes;
-      }
-      setSelectedViolation(null);
-    }, 800);
   };
 
   // SVG Gauge calculations
@@ -139,7 +140,6 @@ export default function EmployeeDashboard({ user, onLogout }) {
           <div>
             <h1 className="text-2xl font-extrabold text-white flex items-center gap-2">
               Welcome back, Ross!
-              <Sparkles className="w-5 h-5 text-indigo-400 animate-bounce" />
             </h1>
             <p className="text-slate-400 text-xs mt-1 font-medium">Here is your personal compliance assessment profile and policy tasks registry.</p>
           </div>
@@ -207,7 +207,7 @@ export default function EmployeeDashboard({ user, onLogout }) {
               <p className="text-[10px] text-slate-400 leading-normal font-medium">
                 {personalComplianceScore >= 80 
                   ? '🟢 Your rating is strong! Continue checking off requirements to reach 100%.' 
-                  : '🟡 Standard attention required. Review outstanding training tasks to resolve risk flags.'}
+                  : '🟡 Attention required. Review outstanding training tasks and sign policy pledges to resolve risk flags.'}
               </p>
             </div>
           </div>
@@ -272,6 +272,91 @@ export default function EmployeeDashboard({ user, onLogout }) {
 
         </div>
 
+        {/* Company Policies & Acknowledgment Pledge */}
+        <div className="p-6 md:p-8 rounded-3xl bg-[#0b0f1a] border border-slate-800/80 shadow-md">
+          <div className="mb-5">
+            <span className="text-[10px] font-extrabold uppercase tracking-widest text-slate-400 block mb-1">Electronic Signature</span>
+            <h3 className="text-base font-bold text-white flex items-center gap-1.5">
+              Corporate Compliance Policies & Pledges
+              <Lock className="w-4.5 h-4.5 text-indigo-400" />
+            </h3>
+            <p className="text-xs text-slate-400 mt-1 leading-normal">
+              You are legally required to review active corporate policy documents and submit an electronic sign-off.
+            </p>
+          </div>
+
+          {/* List items */}
+          {loadingPolicies ? (
+            <div className="flex items-center gap-3 justify-center py-8">
+              <Loader2 className="w-5 h-5 text-indigo-500 animate-spin" />
+              <span className="text-xs font-semibold text-slate-400">Syncing assigned pledges...</span>
+            </div>
+          ) : policiesError ? (
+            <div className="p-4 bg-amber-500/10 border border-amber-500/30 text-amber-400 rounded-xl text-xs text-center">
+              {policiesError}
+            </div>
+          ) : assignedPolicies.length === 0 ? (
+            <div className="p-8 text-center text-slate-500 border border-slate-850 rounded-2xl italic text-xs">
+              No active corporate policies assigned to your account.
+            </div>
+          ) : (
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              {assignedPolicies.map((policy) => {
+                const isSigned = policy.status === 'SIGNED';
+                const isOverdue = policy.status === 'OVERDUE';
+                
+                return (
+                  <div 
+                    key={policy.policy_id}
+                    className="p-5 rounded-2xl bg-[#0f172a]/30 border border-slate-850 hover:border-slate-800 transition-all duration-300 flex flex-col justify-between"
+                  >
+                    <div>
+                      <div className="flex justify-between items-start gap-2 mb-2">
+                        <span className={cn(
+                          "px-2 py-0.5 rounded border text-[9px] font-extrabold tracking-wider uppercase",
+                          isSigned 
+                            ? 'bg-emerald-500/10 border-emerald-500/25 text-emerald-400' 
+                            : isOverdue 
+                              ? 'bg-red-500/10 border-red-500/25 text-red-400 animate-pulse'
+                              : 'bg-amber-500/10 border-amber-500/25 text-amber-400'
+                        )}>
+                          {policy.status}
+                        </span>
+                        <span className="text-[10px] text-slate-500 font-mono font-bold">v{policy.version}</span>
+                      </div>
+                      
+                      <h4 className="text-sm font-extrabold text-white mb-1">
+                        {policy.title}
+                      </h4>
+                      <p className="text-[11px] text-slate-400 line-clamp-2 leading-relaxed">
+                        ID: {policy.policy_id} • Due: {policy.acknowledgment_due_date}
+                      </p>
+                    </div>
+
+                    <div className="mt-4 border-t border-slate-850 pt-3 flex justify-between items-center gap-2">
+                      <span className="text-[9px] text-slate-500 truncate max-w-[150px] font-mono">
+                        {policy.document_sha256.slice(0, 16)}...
+                      </span>
+                      
+                      <button
+                        onClick={() => setSelectedPolicyForSign(policy)}
+                        className={cn(
+                          "px-4 py-2 rounded-xl text-xs font-bold transition-all cursor-pointer inline-flex items-center gap-1 select-none",
+                          isSigned
+                            ? "bg-slate-850 hover:bg-slate-800 text-slate-300 border border-slate-800"
+                            : "bg-indigo-600/10 hover:bg-indigo-600 border border-indigo-500/30 hover:text-white text-indigo-400"
+                        )}
+                      >
+                        {isSigned ? 'View Signed Receipt' : 'Review & E-Sign'}
+                      </button>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          )}
+        </div>
+
         {/* Personal violations log list */}
         <div className="p-6 md:p-8 rounded-3xl bg-[#0b0f1a] border border-slate-800/80 shadow-md">
           <div className="mb-5">
@@ -284,69 +369,91 @@ export default function EmployeeDashboard({ user, onLogout }) {
           </div>
 
           {/* List items */}
-          <div className="space-y-4">
-            {personalViolations.map((violation) => {
-              const isCritOrHigh = ['CRITICAL', 'HIGH'].includes((violation.severity || '').toUpperCase());
-              
-              return (
-                <div 
-                  key={violation.id} 
-                  className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 p-5 rounded-2xl bg-[#0f172a]/30 border border-slate-850 hover:border-indigo-500/25 transition-all duration-300 group"
-                >
-                  <div className="space-y-1">
-                    <div className="flex items-center gap-2.5 flex-wrap">
-                      <span className={cn(
-                        "px-2 py-0.5 rounded border text-[9px] font-extrabold tracking-wider uppercase",
-                        isCritOrHigh ? 'bg-red-500/10 border-red-500/25 text-red-400' : 'bg-amber-500/10 border-amber-500/25 text-amber-400'
-                      )}>
-                        {violation.severity} Severity
-                      </span>
-                      <span className="text-[10px] text-slate-500 font-semibold uppercase font-mono">ID: #{violation.id}</span>
-                      <span className="text-slate-700">•</span>
-                      <span className={cn(
-                        "text-[10px] font-bold uppercase",
-                        violation.status === 'MITIGATED' ? 'text-emerald-400' : 'text-amber-400'
-                      )}>
-                        {violation.status.replace('_', ' ')}
-                      </span>
-                    </div>
-                    <h4 className="text-sm font-extrabold text-white group-hover:text-indigo-400 transition-colors">
-                      {violation.rule_violated}
-                    </h4>
-                    <p className="text-xs text-slate-400 max-w-xl font-medium mt-0.5 line-clamp-1">
-                      {violation.explanation}
-                    </p>
-                  </div>
-
-                  <button
-                    onClick={() => {
-                      setSelectedViolation(violation);
-                      setMitigationStatus(violation.status || 'OPEN');
-                      setMitigationNotes(violation.mitigation_notes || '');
-                    }}
-                    className="px-4 py-2 bg-indigo-600/10 border border-indigo-500/30 hover:bg-indigo-600 hover:text-white text-indigo-400 rounded-xl text-xs font-bold transition-all cursor-pointer inline-flex items-center gap-1 select-none flex-shrink-0"
+          {loadingViolations ? (
+            <div className="flex items-center gap-3 justify-center py-12">
+              <Loader2 className="w-6 h-6 text-indigo-500 animate-spin" />
+              <span className="text-sm font-semibold text-slate-400">Syncing security registry...</span>
+            </div>
+          ) : error ? (
+            <div className="p-4 bg-amber-500/10 border border-amber-500/30 text-amber-400 rounded-xl text-sm text-center">
+              {error}
+            </div>
+          ) : violations.length === 0 ? (
+            <div className="p-12 text-center text-slate-500 border border-slate-850 rounded-2xl italic text-sm">
+              🎉 Congratulations! No active compliance violations assigned to you.
+            </div>
+          ) : (
+            <div className="space-y-4">
+              {violations.map((violation) => {
+                const isCritOrHigh = ['CRITICAL', 'HIGH'].includes((violation.severity || '').toUpperCase());
+                
+                return (
+                  <div 
+                    key={violation.id} 
+                    className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 p-5 rounded-2xl bg-[#0f172a]/30 border border-slate-850 hover:border-indigo-500/25 transition-all duration-300 group"
                   >
-                    View Details & Mitigate
-                  </button>
-                </div>
-              );
-            })}
-          </div>
+                    <div className="space-y-1">
+                      <div className="flex items-center gap-2.5 flex-wrap">
+                        <span className={cn(
+                          "px-2 py-0.5 rounded border text-[9px] font-extrabold tracking-wider uppercase",
+                          isCritOrHigh ? 'bg-red-500/10 border-red-500/25 text-red-400' : 'bg-amber-500/10 border-amber-500/25 text-amber-400'
+                        )}>
+                          {violation.severity} Severity
+                        </span>
+                        <span className="text-[10px] text-slate-500 font-semibold uppercase font-mono font-bold">ID: #{violation.id}</span>
+                        <span className="text-slate-700">•</span>
+                        <span className={cn(
+                          "text-[10px] font-bold uppercase",
+                          violation.status === 'RESOLVED' ? 'text-emerald-400' : 'text-amber-450'
+                        )}>
+                          {violation.status.replace('_', ' ')}
+                        </span>
+                      </div>
+                      <h4 className="text-sm font-extrabold text-white group-hover:text-indigo-400 transition-colors">
+                        {violation.rule_violated}
+                      </h4>
+                      <p className="text-xs text-slate-400 max-w-xl font-medium mt-0.5 line-clamp-1">
+                        {violation.explanation}
+                      </p>
+                      {violation.sla && (
+                        <div className="w-full max-w-md mt-2">
+                          <SLAStatusIndicator sla={violation.sla} severity={violation.severity} />
+                        </div>
+                      )}
+                    </div>
+
+                    <button
+                      onClick={() => setSelectedViolation(violation)}
+                      className="px-4 py-2 bg-indigo-600/10 border border-indigo-500/30 hover:bg-indigo-600 hover:text-white text-indigo-400 rounded-xl text-xs font-bold transition-all cursor-pointer inline-flex items-center gap-1 select-none flex-shrink-0"
+                    >
+                      View Details & Mitigate
+                    </button>
+                  </div>
+                );
+              })}
+            </div>
+          )}
         </div>
 
       </main>
 
       {/* Drill-down Modal details pop-up */}
       {selectedViolation && (
-        <DrillDownModal
+        <MitigationModal
           violation={selectedViolation}
+          user={user}
           onClose={() => setSelectedViolation(null)}
-          mitigationStatus={mitigationStatus}
-          setMitigationStatus={setMitigationStatus}
-          mitigationNotes={mitigationNotes}
-          setMitigationNotes={setMitigationNotes}
-          onSave={handleSaveMitigation}
-          saving={saving}
+          onStatusChanged={fetchViolations}
+        />
+      )}
+
+      {/* Policy Sign-Off modal details pop-up */}
+      {selectedPolicyForSign && (
+        <PolicyAcknowledgmentModal
+          policy={selectedPolicyForSign}
+          user={user}
+          onClose={() => setSelectedPolicyForSign(null)}
+          onAcknowledged={fetchAssignedPolicies}
         />
       )}
     </div>
