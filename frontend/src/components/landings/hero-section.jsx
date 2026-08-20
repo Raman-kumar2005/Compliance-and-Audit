@@ -1,5 +1,6 @@
 import React from 'react'
 import { ArrowRight, CheckCircle2, Sparkles } from 'lucide-react'
+import LiveAuditPreview from './LiveAuditPreview'
 
 const frameworks = ['SOC 2', 'ISO 27001', 'HIPAA', 'GDPR', 'EU AI Act', 'NIST']
 
@@ -101,66 +102,7 @@ export default function HeroSection({ onGetStarted }) {
 
         {/* Product visual */}
         <div className="relative mx-auto mt-16 max-w-4xl">
-          <div className="pointer-events-none absolute -inset-x-10 -top-6 bottom-0 rounded-[2rem] bg-primary/10 blur-3xl" />
-          <div className="relative overflow-hidden rounded-2xl border border-border/80 bg-card/80 shadow-2xl shadow-black/40 backdrop-blur">
-            <div className="flex items-center justify-between gap-4 border-b border-border/60 bg-elevated/60 px-5 py-3.5">
-              <div className="flex items-center gap-2">
-                <span className="size-2.5 rounded-full bg-muted-foreground/30" />
-                <span className="size-2.5 rounded-full bg-muted-foreground/30" />
-                <span className="size-2.5 rounded-full bg-muted-foreground/30" />
-              </div>
-              <p className="font-mono text-[11px] tracking-wide text-muted-foreground">
-                audit-run · continuous · 2,184 controls
-              </p>
-              <span className="flex items-center gap-1.5 rounded-full bg-primary/15 px-2.5 py-1 text-[11px] font-medium text-primary ring-1 ring-primary/25">
-                <span className="size-1.5 rounded-full bg-primary" />
-                Live
-              </span>
-            </div>
-
-            <div className="grid gap-px bg-border/50 sm:grid-cols-3">
-              {[
-                { label: 'Audit readiness', value: '96.4%' },
-                { label: 'Open gaps', value: '7' },
-                { label: 'Evidence freshness', value: '4m' },
-              ].map((stat) => (
-                <div key={stat.label} className="bg-card px-5 py-4">
-                  <p className="text-xs text-muted-foreground">{stat.label}</p>
-                  <p className="mt-1 text-2xl font-semibold tracking-tight">
-                    {stat.value}
-                  </p>
-                </div>
-              ))}
-            </div>
-
-            <ul className="divide-y divide-border/50">
-              {auditRows.map((row) => (
-                <li
-                  key={row.control}
-                  className="flex flex-col gap-2 px-5 py-4 sm:flex-row sm:items-center sm:justify-between"
-                >
-                  <div className="min-w-0">
-                    <p className="truncate text-sm font-medium">
-                      {row.control}
-                    </p>
-                    <p className="mt-0.5 font-mono text-[11px] text-muted-foreground">
-                      {row.framework}
-                    </p>
-                  </div>
-                  <div className="flex items-center gap-3">
-                    <p className="text-xs text-muted-foreground">
-                      {row.detail}
-                    </p>
-                    <span
-                      className={`rounded-md px-2 py-1 text-[11px] font-medium ring-1 ${stateStyles[row.state]}`}
-                    >
-                      {stateLabels[row.state]}
-                    </span>
-                  </div>
-                </li>
-              ))}
-            </ul>
-          </div>
+          <LiveAuditPreview />
         </div>
       </div>
     </section>
