@@ -1,6 +1,6 @@
 import React, { useState, useMemo, useEffect } from 'react';
 import { 
-  LogOut, ShieldAlert, CheckCircle2, User, Clock, Loader2, Lock 
+  LogOut, ShieldAlert, CheckCircle2, User, Clock, Loader2, Lock, Building 
 } from 'lucide-react';
 import axios from 'axios';
 import MitigationModal from './MitigationModal';
@@ -31,8 +31,9 @@ export default function EmployeeDashboard({ user, onLogout }) {
   const employeeEmail = user?.email || 'employee.ross@security-hq.com';
 
   const authHeader = useMemo(() => {
-    return { Authorization: `Bearer ${employeeEmail}:${user?.role || 'Employee'}` };
-  }, [employeeEmail, user]);
+    if (!user || !user.token) return {};
+    return { Authorization: `Bearer ${user.token}` };
+  }, [user]);
 
   const fetchViolations = async () => {
     setLoadingViolations(true);
@@ -115,6 +116,12 @@ export default function EmployeeDashboard({ user, onLogout }) {
 
           <div className="flex items-center gap-4">
             {/* Employee tag */}
+            {user?.company_name && (
+              <div className="hidden sm:flex items-center gap-2 px-3 py-1.5 rounded-xl bg-slate-900 border border-slate-800 text-xs font-semibold text-indigo-400">
+                <Building className="w-3.5 h-3.5 text-indigo-400" />
+                <span>{user.company_name}</span>
+              </div>
+            )}
             <div className="hidden sm:flex items-center gap-2 px-3 py-1.5 rounded-xl bg-slate-900 border border-slate-800 text-xs font-semibold text-slate-300">
               <User className="w-3.5 h-3.5 text-indigo-400" />
               <span>{employeeEmail}</span>
@@ -139,14 +146,14 @@ export default function EmployeeDashboard({ user, onLogout }) {
         <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 p-6 rounded-3xl bg-gradient-to-r from-[#0c1224] to-[#0f172a] border border-slate-800/80 shadow-lg">
           <div>
             <h1 className="text-2xl font-extrabold text-white flex items-center gap-2">
-              Welcome back, Ross!
+              Welcome back, {user?.name || 'Ross'}!
             </h1>
             <p className="text-slate-400 text-xs mt-1 font-medium">Here is your personal compliance assessment profile and policy tasks registry.</p>
           </div>
           <div className="flex gap-4 text-xs font-semibold text-slate-400">
             <div>
               <span className="block text-[9px] uppercase font-bold text-slate-500">Corporate Domain</span>
-              <span className="text-slate-200 mt-0.5 block">security-hq.com</span>
+              <span className="text-slate-200 mt-0.5 block">{user?.email?.split('@')[1] || 'security-hq.com'}</span>
             </div>
             <div className="border-l border-slate-800 pl-4">
               <span className="block text-[9px] uppercase font-bold text-slate-500">Last Assessment</span>

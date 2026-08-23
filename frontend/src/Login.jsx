@@ -14,6 +14,8 @@ export default function Login({ onLogin, onBack }) {
   const [error, setError] = useState('');
   const [validationErrors, setValidationErrors] = useState({});
 
+  const BACKEND_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000/api';
+
   // Form input validation
   const validateForm = () => {
     const errors = {};
@@ -35,39 +37,74 @@ export default function Login({ onLogin, onBack }) {
     return Object.keys(errors).length === 0;
   };
 
-  const handleFormSubmit = (e) => {
+  const handleFormSubmit = async (e) => {
     e.preventDefault();
     if (!validateForm()) return;
 
     setError('');
     setLoading(true);
 
-    // Simulate backend JWT authentication delay
-    setTimeout(() => {
+    try {
+      const response = await fetch(`${BACKEND_URL}/auth/login`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ email, password }),
+      });
+
+      const data = await response.json();
       setLoading(false);
-      const role = activeTab === 'employee' ? 'Employee' : 'HR';
-      onLogin({ email, role });
-    }, 1200);
+
+      if (!response.ok) {
+        setError(data.detail || 'Incorrect corporate email or password.');
+        return;
+      }
+
+      // data is { access_token, user: { id, email, role, tenant_id, company_name } }
+      onLogin(data);
+    } catch (err) {
+      setLoading(false);
+      setError('Connection to compliance authentication server failed.');
+    }
   };
 
   // Quick Bypasses for Demos
-  const handleQuickLogin = (roleType) => {
+  const handleQuickLogin = async (roleType) => {
     setError('');
     setLoading(true);
 
     const demoCredentials = {
-      employee: { email: 'employee.ross@security-hq.com', password: 'secretEmployeePass', role: 'Employee' },
-      hr: { email: 'auditor.compliance@firm-wide.com', password: 'secureHRAdminPass', role: 'HR' }
+      employee: { email: 'employee.ross@security-hq.com', password: 'secretEmployeePass' },
+      hr: { email: 'auditor.compliance@firm-wide.com', password: 'secureHRAdminPass' }
     };
 
     const target = demoCredentials[roleType];
     setEmail(target.email);
     setPassword(target.password);
 
-    setTimeout(() => {
+    try {
+      const response = await fetch(`${BACKEND_URL}/auth/login`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ email: target.email, password: target.password }),
+      });
+
+      const data = await response.json();
       setLoading(false);
-      onLogin({ email: target.email, role: target.role });
-    }, 900);
+
+      if (!response.ok) {
+        setError(data.detail || 'Authentication failed.');
+        return;
+      }
+
+      onLogin(data);
+    } catch (err) {
+      setLoading(false);
+      setError('Connection to compliance authentication server failed.');
+    }
   };
 
   return (

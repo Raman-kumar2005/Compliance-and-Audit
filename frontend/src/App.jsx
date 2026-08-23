@@ -49,9 +49,18 @@ export default function App() {
     window.history.pushState({}, '', urlPath);
   };
 
-  const handleLogin = (authenticatedUser) => {
-    setUser(authenticatedUser);
-    if (authenticatedUser.role === 'HR') {
+  const handleLogin = (loginResponse) => {
+    // loginResponse is { access_token, user: { id, email, role, tenant_id, company_name } }
+    const userProfile = {
+      id: loginResponse.user.id,
+      email: loginResponse.user.email,
+      role: loginResponse.user.role === 'HR' ? 'HR' : 'Employee',
+      tenant_id: loginResponse.user.tenant_id,
+      company_name: loginResponse.user.company_name,
+      token: loginResponse.access_token
+    };
+    setUser(userProfile);
+    if (userProfile.role === 'HR') {
       navigateTo('hr-dashboard', '/hr-dashboard');
     } else {
       navigateTo('employee-dashboard', '/employee-dashboard');

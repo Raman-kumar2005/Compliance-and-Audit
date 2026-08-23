@@ -104,10 +104,9 @@ export default function MitigationModal({
   const [successMsg, setSuccessMsg] = useState('');
   const [showConfirm, setShowConfirm] = useState(null); // null | 'APPROVE' | 'REJECT' | 'START'
 
-  // Configure Axios headers
   const authHeader = useMemo(() => {
-    if (!user) return {};
-    return { Authorization: `Bearer ${user.email}:${user.role}` };
+    if (!user || !user.token) return {};
+    return { Authorization: `Bearer ${user.token}` };
   }, [user]);
 
   // Load activities and fresh violation details

@@ -11,7 +11,7 @@ import {
   Upload, AlertTriangle, ShieldAlert, FileText, Loader2, 
   Sparkles, Download, Search, 
   ArrowRight, FileSpreadsheet, History, PlusCircle, ArrowLeft, Clock, LogOut, GitCompare,
-  ArrowUpDown, User, X, Lock
+  ArrowUpDown, User, X, Lock, Building
 } from 'lucide-react';
 import axios from 'axios';
 import { cn } from './lib/utils';
@@ -244,8 +244,8 @@ export default function Dashboard({ user, onLogout }) {
   const BACKEND_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000/api';
 
   const authHeader = useMemo(() => {
-    if (!user) return {};
-    return { Authorization: `Bearer ${user.email}:${user.role}` };
+    if (!user || !user.token) return {};
+    return { Authorization: `Bearer ${user.token}` };
   }, [user]);
 
   const fetchViolations = async () => {
@@ -444,7 +444,7 @@ export default function Dashboard({ user, onLogout }) {
   const fetchHistory = async () => {
     setHistoryLoading(true);
     try {
-      const response = await axios.get(`${BACKEND_URL}/history`);
+      const response = await axios.get(`${BACKEND_URL}/history`, { headers: authHeader });
       setHistoryData(response.data);
     } catch (err) {
       console.error("Failed to fetch history:", err);
@@ -475,6 +475,7 @@ export default function Dashboard({ user, onLogout }) {
 
     try {
       const response = await axios.post(`${BACKEND_URL}/audit`, formData, {
+        headers: authHeader,
         onUploadProgress: (progressEvent) => {
           if (progressEvent.total) {
             const percentCompleted = Math.round((progressEvent.loaded * 100) / progressEvent.total);
@@ -860,6 +861,12 @@ export default function Dashboard({ user, onLogout }) {
           
           <div className="flex items-center gap-4">
             {/* HR auditor info badge */}
+            {user?.company_name && (
+              <div className="hidden lg:flex items-center gap-2 px-3 py-1.5 rounded-xl bg-[#0f172a] border border-slate-800 text-xs font-semibold text-indigo-400">
+                <Building className="w-3.5 h-3.5 text-indigo-400" />
+                <span>{user.company_name}</span>
+              </div>
+            )}
             <div className="hidden lg:flex items-center gap-2 px-3 py-1.5 rounded-xl bg-[#0f172a] border border-slate-800 text-xs font-semibold text-slate-300">
               <User className="w-3.5 h-3.5 text-purple-400" />
               <span>{user?.email || 'hr.auditor@company.com'}</span>
@@ -1099,7 +1106,7 @@ export default function Dashboard({ user, onLogout }) {
         {/* VIEW: AUDIT COMPARISON */}
         {activeTab === 'compare' && (
           <div className="max-w-7xl mx-auto w-full px-6 md:px-12 py-8 animate-in fade-in zoom-in-95 duration-300">
-            <AuditComparison />
+            <AuditComparison user={user} />
           </div>
         )}
 

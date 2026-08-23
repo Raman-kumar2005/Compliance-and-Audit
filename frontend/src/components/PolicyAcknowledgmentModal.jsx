@@ -30,9 +30,8 @@ export default function PolicyAcknowledgmentModal({ policy, user, onClose, onAck
   const expectedLegalName = user?.name || 'Ross';
 
   const authHeader = useMemo(() => {
-    const email = user?.email || 'employee.ross@security-hq.com';
-    const role = user?.role || 'Employee';
-    return { Authorization: `Bearer ${email}:${role}` };
+    if (!user || !user.token) return {};
+    return { Authorization: `Bearer ${user.token}` };
   }, [user]);
 
   // Track if scrolled to bottom on mount/scroll

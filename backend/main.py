@@ -3,12 +3,12 @@ import json
 import io
 import uuid
 import hashlib
-from datetime import datetime
+from datetime import datetime, timedelta
 import pandas as pd
 from pathlib import Path
 from dotenv import load_dotenv
 from pypdf import PdfReader
-from fastapi import FastAPI, UploadFile, File, Form, HTTPException, status, Query, Request
+from fastapi import FastAPI, UploadFile, File, Form, HTTPException, status, Query, Request, Depends, Header
 from fastapi.middleware.cors import CORSMiddleware
 from google import genai
 from google.genai import types
@@ -35,19 +35,30 @@ app.add_middleware(
 
 HISTORY_FILE = "history.json"
 
-def get_history():
-    if not os.path.exists(HISTORY_FILE):
+def get_tenant_file(base_name: str, tenant_id: str) -> str:
+    if not tenant_id:
+        tenant_id = "tenant-security-hq"
+    safe_tenant = "".join(c for c in tenant_id if c.isalnum() or c in "-_")
+    parts = base_name.rsplit(".", 1)
+    if len(parts) == 2:
+        return f"{parts[0]}_{safe_tenant}.{parts[1]}"
+    return f"{base_name}_{safe_tenant}"
+
+def get_history(tenant_id: str = "tenant-security-hq"):
+    filename = get_tenant_file(HISTORY_FILE, tenant_id)
+    if not os.path.exists(filename):
         return []
     try:
-        with open(HISTORY_FILE, "r") as f:
+        with open(filename, "r") as f:
             return json.load(f)
     except json.JSONDecodeError:
         return []
 
-def save_to_history(record):
-    history = get_history()
+def save_to_history(record, tenant_id: str = "tenant-security-hq"):
+    filename = get_tenant_file(HISTORY_FILE, tenant_id)
+    history = get_history(tenant_id)
     history.insert(0, record)  # Prepend so newest is first
-    with open(HISTORY_FILE, "w") as f:
+    with open(filename, "w") as f:
         json.dump(history, f, indent=4)
 
 # --- STRICT PYDANTIC SCHEMAS FOR GEMINI STRUCTURED OUTPUT ---
@@ -93,6 +104,10 @@ class Violation(BaseModel):
     verified_by: str | None = Field(default=None)
     created_at: str | None = Field(default=None)
     updated_at: str | None = Field(default=None)
+    violation_type: str = Field(default="GENERAL", description="Violation type classification (e.g. KEY_LEAK, TRAINING_INCOMPLETE, MFA_BYPASS, UNAUTHORIZED_ACCESS)")
+    policy_category: str = Field(default="Compliance", description="Category of the policy rule violated")
+    fingerprint: str | None = Field(default=None, description="Calculated stable MD5 fingerprint")
+    sanitized_evidence: dict | None = Field(default=None, description="Extracted and sanitized evidence fields")
 
 class ViolationUpdate(BaseModel):
     status: str = Field(..., description="Must be OPEN, IN_PROGRESS, MITIGATED, or FALSE_POSITIVE")
@@ -121,24 +136,69 @@ class ComparisonSummary(BaseModel):
     risk_trend_confidence: str
     new_violations_count: int
     resolved_violations_count: int
+    changed_violations_count: int
     unchanged_violations_count: int
     new_violations: list[dict]
     resolved_violations: list[dict]
+    changed_violations: list[dict]
     unchanged_violations: list[dict]
     severity_breakdown_difference: dict[str, int]
     department_breakdown_difference: dict[str, int]
     comparison_summary: str
 
 
+def extract_and_sanitize_evidence(log_entry: str) -> dict:
+    """Parses log entry string to JSON-like dict, masking sensitive fields."""
+    try:
+        import ast
+        import json
+        # Clean up string if it has double single quotes or other issues
+        cleaned_entry = log_entry.strip()
+        try:
+            data = ast.literal_eval(cleaned_entry)
+        except Exception:
+            data = json.loads(cleaned_entry)
+            
+        if not isinstance(data, dict):
+            return {"raw_log": log_entry}
+            
+        sensitive_keys = {
+            "gender", "gendercode", "race", "racedesc", "marital", "maritaldesc", 
+            "age", "salary", "pay", "payzone", "dob", "cost", "training cost",
+            "relationship", "citizen", "citizenstatus", "hispanic", "veteran"
+        }
+        
+        sanitized = {}
+        for k, v in data.items():
+            k_lower = k.lower().strip()
+            # If key matches any sensitive substring, mask it
+            if any(s in k_lower for s in sensitive_keys):
+                sanitized[k] = "[MASKED FOR PRIVACY]"
+            else:
+                sanitized[k] = v
+        return sanitized
+    except Exception:
+        return {"raw_log": log_entry}
+
 def make_violation_fingerprint(v: dict) -> str:
-    """Generates a stable fingerprint for a violation using rule + log entry."""
-    raw_key = f"{v.get('rule_violated', '')}:{v.get('log_entry', '')}"
+    """Generates a stable fingerprint for a violation using rule + employee + department + violation_type."""
+    rule = v.get("rule_violated") or ""
+    emp = v.get("employee") or v.get("assigned_employee_id") or "Unknown"
+    dept = v.get("department") or "Unknown"
+    v_type = v.get("violation_type") or "GENERAL"
+    
+    norm_rule = str(rule).strip().lower()
+    norm_emp = str(emp).strip().lower()
+    norm_dept = str(dept).strip().lower()
+    norm_v_type = str(v_type).strip().lower()
+    
+    raw_key = f"{norm_rule}|{norm_emp}|{norm_dept}|{norm_v_type}"
     return hashlib.md5(raw_key.encode('utf-8')).hexdigest()
 
 
 def send_violation_alert(rule, severity, log_evidence, recipient_email):
     try:
-        subject = f"🚨 URGENT: {severity} Policy Violation Detected"
+        subject = f"[URGENT] {severity} Policy Violation Detected"
         body = f"""
         Enterprise AI Auditor has detected a new policy violation.
         
@@ -150,13 +210,13 @@ def send_violation_alert(rule, severity, log_evidence, recipient_email):
         """
         
         print("\n" + "="*50)
-        print(f"✅ [MOCK EMAIL SENT TO {recipient_email}]")
+        print(f"[SUCCESS] [MOCK EMAIL SENT TO {recipient_email}]")
         print(f"Subject: {subject}")
         print(body)
         print("="*50 + "\n")
         
     except Exception as e:
-        print(f"❌ Failed to process email alert: {e}")
+        print(f"[ERROR] Failed to process email alert: {e}")
 
 MAX_FILE_COUNT = 5
 MAX_FILE_SIZE = 5 * 1024 * 1024  # 5 MB
@@ -200,6 +260,169 @@ def extract_text_from_file(file: UploadFile, max_chars: int) -> str:
             detail=f"Unsupported file format: {file.filename}"
         )
 
+# JWT & Tenant Authentication module
+import base64
+import hmac
+import time
+
+JWT_SECRET = "compliance-tenant-isolation-secret-key-123!"
+
+def base64url_encode(payload: bytes) -> str:
+    return base64.urlsafe_b64encode(payload).replace(b'=', b'').decode('utf-8')
+
+def base64url_decode(payload: str) -> bytes:
+    padding = '=' * (4 - (len(payload) % 4))
+    return base64.urlsafe_b64decode(payload + padding)
+
+def create_jwt(claims: dict) -> str:
+    header = {"alg": "HS256", "typ": "JWT"}
+    header_encoded = base64url_encode(json.dumps(header).encode('utf-8'))
+    payload_encoded = base64url_encode(json.dumps(claims).encode('utf-8'))
+    
+    signature_base = f"{header_encoded}.{payload_encoded}".encode('utf-8')
+    signature = hmac.new(JWT_SECRET.encode('utf-8'), signature_base, hashlib.sha256).digest()
+    signature_encoded = base64url_encode(signature)
+    
+    return f"{header_encoded}.{payload_encoded}.{signature_encoded}"
+
+def decode_jwt(token: str) -> dict:
+    try:
+        parts = token.split(".")
+        if len(parts) != 3:
+            return None
+        header_encoded, payload_encoded, signature_encoded = parts
+        
+        # Verify signature
+        signature_base = f"{header_encoded}.{payload_encoded}".encode('utf-8')
+        expected_sig = hmac.new(JWT_SECRET.encode('utf-8'), signature_base, hashlib.sha256).digest()
+        expected_sig_encoded = base64url_encode(expected_sig)
+        
+        if not hmac.compare_digest(signature_encoded.encode('utf-8'), expected_sig_encoded.encode('utf-8')):
+            return None
+            
+        payload = json.loads(base64url_decode(payload_encoded).decode('utf-8'))
+        if "exp" in payload and payload["exp"] < time.time():
+            return None
+        return payload
+    except Exception:
+        return None
+
+USERS_DB = {
+    "hr.alice@company-a.com": {
+        "id": "usr-alice",
+        "name": "Alice",
+        "email": "hr.alice@company-a.com",
+        "password": "passwordA123",
+        "role": "HR",
+        "tenant_id": "tenant-company-a",
+        "company_name": "Company A"
+    },
+    "employee.bob@company-a.com": {
+        "id": "usr-bob",
+        "name": "Bob",
+        "email": "employee.bob@company-a.com",
+        "password": "passwordA123",
+        "role": "EMPLOYEE",
+        "employee_id": "EMP-A-01",
+        "tenant_id": "tenant-company-a",
+        "company_name": "Company A"
+    },
+    "hr.charlie@company-b.com": {
+        "id": "usr-charlie",
+        "name": "Charlie",
+        "email": "hr.charlie@company-b.com",
+        "password": "passwordB123",
+        "role": "HR",
+        "tenant_id": "tenant-company-b",
+        "company_name": "Company B"
+    },
+    "employee.david@company-b.com": {
+        "id": "usr-david",
+        "name": "David",
+        "email": "employee.david@company-b.com",
+        "password": "passwordB123",
+        "role": "EMPLOYEE",
+        "employee_id": "EMP-B-01",
+        "tenant_id": "tenant-company-b",
+        "company_name": "Company B"
+    },
+    "auditor.compliance@firm-wide.com": {
+        "id": "usr-auditor",
+        "name": "Auditor",
+        "email": "auditor.compliance@firm-wide.com",
+        "password": "secureHRAdminPass",
+        "role": "HR",
+        "tenant_id": "tenant-security-hq",
+        "company_name": "Security HQ",
+        "employee_id": "EMP-1002"
+    },
+    "employee.ross@security-hq.com": {
+        "id": "usr-ross",
+        "name": "Ross",
+        "email": "employee.ross@security-hq.com",
+        "password": "secretEmployeePass",
+        "role": "EMPLOYEE",
+        "employee_id": "EMP-3430",
+        "tenant_id": "tenant-security-hq",
+        "company_name": "Security HQ"
+    }
+}
+
+def get_current_user(authorization: str = Header(None)):
+    if not authorization or not authorization.startswith("Bearer "):
+        raise HTTPException(status_code=401, detail="Unauthorized: Missing or invalid token.")
+    
+    token = authorization[7:].strip()
+    claims = decode_jwt(token)
+    if not claims:
+        raise HTTPException(status_code=401, detail="Unauthorized: Invalid or expired token.")
+        
+    return claims
+
+class LoginRequest(BaseModel):
+    email: str
+    password: str
+
+@app.post("/api/auth/login")
+def login_endpoint(payload: LoginRequest):
+    email_clean = payload.email.strip().lower()
+    matched_user = None
+    for k, u in USERS_DB.items():
+        if k.lower() == email_clean:
+            matched_user = u
+            break
+            
+    if not matched_user or matched_user["password"] != payload.password:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Incorrect corporate email or password."
+        )
+        
+    # Generate JWT claims (valid for 12 hours)
+    claims = {
+        "id": matched_user["id"],
+        "email": matched_user["email"],
+        "role": matched_user["role"],
+        "tenant_id": matched_user["tenant_id"],
+        "company_name": matched_user["company_name"],
+        "name": matched_user["name"],
+        "exp": time.time() + 12 * 3600
+    }
+    if "employee_id" in matched_user:
+        claims["employee_id"] = matched_user["employee_id"]
+        
+    token = create_jwt(claims)
+    return {
+        "access_token": token,
+        "user": {
+            "id": matched_user["id"],
+            "email": matched_user["email"],
+            "role": matched_user["role"],
+            "tenant_id": matched_user["tenant_id"],
+            "company_name": matched_user["company_name"]
+        }
+    }
+
 # --- BASE ENDPOINTS ---
 
 @app.get("/")
@@ -207,8 +430,12 @@ def read_root():
     return {"status": "online", "message": "Compliance Auditor AI API is active!"}
 
 @app.get("/api/history")
-def get_audit_history():
-    return get_history()
+def get_audit_history(current_user: dict = Depends(get_current_user)):
+    return get_history(current_user["tenant_id"])
+
+@app.get("/api/notifications")
+def get_all_notifications_endpoint(current_user: dict = Depends(get_current_user)):
+    return get_notifications(current_user["tenant_id"])
 
 # --- AUDIT COMPARISON ENDPOINTS ---
 
@@ -216,10 +443,11 @@ def get_audit_history():
 def list_audits(
     min_score: int = Query(None, description="Filter audits by minimum compliance score"),
     search: str = Query(None, description="Search term matching policy or log filename"),
-    sort_by: str = Query("timestamp_desc", description="Sort parameter (timestamp_desc, timestamp_asc, score_desc, score_asc)")
+    sort_by: str = Query("timestamp_desc", description="Sort parameter (timestamp_desc, timestamp_asc, score_desc, score_asc)"),
+    current_user: dict = Depends(get_current_user)
 ):
     """Retrieve list of all historical audit scans with optional filtering and sorting."""
-    history = get_history()
+    history = get_history(current_user["tenant_id"])
     results = []
     for item in history:
         score = item.get("metrics", {}).get("compliance_score", 0)
@@ -261,10 +489,12 @@ def list_audits(
 @app.get("/api/audits/compare", response_model=ComparisonSummary)
 def compare_audits(
     prev_id: str = Query(..., description="ID of previous audit scan"),
-    curr_id: str = Query(..., description="ID of current audit scan")
+    curr_id: str = Query(..., description="ID of current audit scan"),
+    current_user: dict = Depends(get_current_user)
 ):
     """Compares two saved audits and returns delta metrics."""
-    history = get_history()
+    tenant_id = current_user["tenant_id"]
+    history = get_history(tenant_id)
     
     prev_audit = next((item for item in history if item.get("id") == prev_id), None)
     curr_audit = next((item for item in history if item.get("id") == curr_id), None)
@@ -287,20 +517,82 @@ def compare_audits(
     else:
         overall_risk_change = "UNCHANGED"
 
+    # Ensure fingerprints and sanitized evidence are populated
+    for v in prev_audit.get("violations", []):
+        if "violation_type" not in v:
+            v["violation_type"] = "GENERAL"
+        if "policy_category" not in v:
+            v["policy_category"] = "Compliance"
+        if "fingerprint" not in v or not v["fingerprint"]:
+            v["fingerprint"] = make_violation_fingerprint(v)
+        if "sanitized_evidence" not in v or not v["sanitized_evidence"]:
+            v["sanitized_evidence"] = extract_and_sanitize_evidence(v.get("log_entry", ""))
+            
+    for v in curr_audit.get("violations", []):
+        if "violation_type" not in v:
+            v["violation_type"] = "GENERAL"
+        if "policy_category" not in v:
+            v["policy_category"] = "Compliance"
+        if "fingerprint" not in v or not v["fingerprint"]:
+            v["fingerprint"] = make_violation_fingerprint(v)
+        if "sanitized_evidence" not in v or not v["sanitized_evidence"]:
+            v["sanitized_evidence"] = extract_and_sanitize_evidence(v.get("log_entry", ""))
+
     # 2. Violation Matching using Stable Fingerprints
-    prev_violations = {make_violation_fingerprint(v): v for v in prev_audit.get("violations", [])}
-    curr_violations = {make_violation_fingerprint(v): v for v in curr_audit.get("violations", [])}
+    prev_violations = {v["fingerprint"]: v for v in prev_audit.get("violations", [])}
+    curr_violations = {v["fingerprint"]: v for v in curr_audit.get("violations", [])}
 
     prev_keys = set(prev_violations.keys())
     curr_keys = set(curr_violations.keys())
 
     new_keys = curr_keys - prev_keys
     resolved_keys = prev_keys - curr_keys
-    unchanged_keys = curr_keys & prev_keys
+    both_keys = curr_keys & prev_keys
 
-    new_violations = [curr_violations[k] for k in new_keys]
-    resolved_violations = [prev_violations[k] for k in resolved_keys]
-    unchanged_violations = [curr_violations[k] for k in unchanged_keys]
+    new_violations = []
+    for k in new_keys:
+        v = dict(curr_violations[k])
+        v["change_reason"] = "Detected in current audit scan."
+        new_violations.append(v)
+        
+    resolved_violations = []
+    for k in resolved_keys:
+        v = dict(prev_violations[k])
+        v["change_reason"] = "Resolved or absent in current audit scan."
+        resolved_violations.append(v)
+
+    changed_violations = []
+    unchanged_violations = []
+    for k in both_keys:
+        prev_v = prev_violations[k]
+        curr_v = curr_violations[k]
+        
+        changes = []
+        if prev_v.get("severity") != curr_v.get("severity"):
+            changes.append(f"Severity changed from {prev_v.get('severity')} to {curr_v.get('severity')}")
+        if prev_v.get("department") != curr_v.get("department"):
+            changes.append(f"Department transferred from {prev_v.get('department')} to {curr_v.get('department')}")
+        if prev_v.get("status") != curr_v.get("status"):
+            changes.append(f"Status shifted from {prev_v.get('status')} to {curr_v.get('status')}")
+        if prev_v.get("log_entry") != curr_v.get("log_entry"):
+            changes.append("Evidence log mismatch identified")
+            
+        if changes:
+            v = dict(curr_v)
+            v["change_reason"] = "; ".join(changes)
+            v["previous_state"] = {
+                "severity": prev_v.get("severity"),
+                "department": prev_v.get("department"),
+                "status": prev_v.get("status"),
+                "log_entry": prev_v.get("log_entry"),
+                "due_date": prev_v.get("due_date"),
+                "assigned_employee_name": prev_v.get("assigned_employee_name")
+            }
+            changed_violations.append(v)
+        else:
+            v = dict(curr_v)
+            v["change_reason"] = "No modification detected."
+            unchanged_violations.append(v)
 
     # 3. Severity Breakdown Difference
     prev_sev = prev_audit.get("metrics", {}).get("risk_distribution", {})
@@ -329,7 +621,7 @@ def compare_audits(
     else:
         summary_parts.append(f"Compliance score remained unchanged at {curr_score}.")
 
-    summary_parts.append(f"Identified {len(new_violations)} new violation(s) and resolved {len(resolved_violations)} previous violation(s).")
+    summary_parts.append(f"Identified {len(new_violations)} new violation(s), {len(changed_violations)} changed violation(s), and resolved {len(resolved_violations)} previous violation(s).")
 
     if len(new_violations) > 0:
         top_new_rule = new_violations[0].get("rule_violated", "Unknown Rule")
@@ -343,9 +635,11 @@ def compare_audits(
         "risk_trend_confidence": "HIGH (Fingerprint Match)",
         "new_violations_count": len(new_violations),
         "resolved_violations_count": len(resolved_violations),
+        "changed_violations_count": len(changed_violations),
         "unchanged_violations_count": len(unchanged_violations),
         "new_violations": new_violations,
         "resolved_violations": resolved_violations,
+        "changed_violations": changed_violations,
         "unchanged_violations": unchanged_violations,
         "severity_breakdown_difference": sev_diff,
         "department_breakdown_difference": dept_diff,
@@ -353,9 +647,9 @@ def compare_audits(
     }
 
 @app.get("/api/audits/{audit_id}")
-def get_audit_by_id(audit_id: str):
+def get_audit_by_id(audit_id: str, current_user: dict = Depends(get_current_user)):
     """Retrieve a single audit record by its ID."""
-    history = get_history()
+    history = get_history(current_user["tenant_id"])
     for item in history:
         if item.get("id") == audit_id:
             # Ensure violations have default status/mitigation_notes
@@ -412,8 +706,15 @@ def update_violation(audit_id: str, violation_id: int, update_data: ViolationUpd
 def execute_audit(
     policy_files: list[UploadFile] = File(...),
     log_files: list[UploadFile] = File(...),
-    hr_email: str = Form(None)
+    hr_email: str = Form(None),
+    current_user: dict = Depends(get_current_user)
 ):
+    if current_user["role"] != "HR":
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Access denied: HR permissions required to initiate compliance audit scans."
+        )
+        
     # Validate hr_email presence and format
     if not hr_email or not hr_email.strip():
         raise HTTPException(
@@ -617,12 +918,15 @@ INSTRUCTIONS:
         
         # Initialize lifecycle fields and assign globally unique violation IDs
         from datetime import timedelta
+        tenant_id = current_user["tenant_id"]
+        created_by_user_id = current_user["id"]
+        
         for idx, violation in enumerate(violations):
             unique_vio_id = f"VIO-{record_id[:8]}-{idx+1}"
             violation["id"] = unique_vio_id
             violation["status"] = "OPEN"
-            violation["assigned_employee_id"] = "EMP-3430"
-            violation["assigned_employee_name"] = "Ross Security"
+            violation["assigned_employee_id"] = "EMP-3430" if tenant_id == "tenant-security-hq" else "EMP-A-01"
+            violation["assigned_employee_name"] = "Ross Security" if tenant_id == "tenant-security-hq" else "Bob"
             violation["department"] = violation.get("department", "IT")
             violation["due_date"] = (datetime.now() + timedelta(days=7)).date().isoformat()
             violation["mitigation_evidence_url"] = None
@@ -635,6 +939,13 @@ INSTRUCTIONS:
             violation["created_at"] = timestamp
             violation["updated_at"] = timestamp
             violation["mitigation_notes"] = ""
+            violation["tenant_id"] = tenant_id
+            if "violation_type" not in violation:
+                violation["violation_type"] = "GENERAL"
+            if "policy_category" not in violation:
+                violation["policy_category"] = "Compliance"
+            violation["fingerprint"] = make_violation_fingerprint(violation)
+            violation["sanitized_evidence"] = extract_and_sanitize_evidence(violation.get("log_entry", ""))
         
         audit_record = {
             "id": record_id,
@@ -646,10 +957,12 @@ INSTRUCTIONS:
             "skipped_files": skipped_files,
             "metrics": audit_result.get("metrics", {}),
             "violations": violations,
-            "alert": alert_info
+            "alert": alert_info,
+            "tenant_id": tenant_id,
+            "created_by_user_id": created_by_user_id
         }
         
-        save_to_history(audit_record)
+        save_to_history(audit_record, tenant_id)
         return audit_record
 
     except json.JSONDecodeError:
@@ -671,23 +984,25 @@ INSTRUCTIONS:
 
 ACTIVITY_FILE = "activity.json"
 
-def get_activities():
-    if not os.path.exists(ACTIVITY_FILE):
+def get_activities(tenant_id: str = "tenant-security-hq"):
+    filename = get_tenant_file(ACTIVITY_FILE, tenant_id)
+    if not os.path.exists(filename):
         return []
     try:
-        with open(ACTIVITY_FILE, "r") as f:
+        with open(filename, "r") as f:
             return json.load(f)
     except json.JSONDecodeError:
         return []
 
-def save_activity(activity: dict):
-    activities = get_activities()
+def save_activity(activity: dict, tenant_id: str = "tenant-security-hq"):
+    filename = get_tenant_file(ACTIVITY_FILE, tenant_id)
+    activities = get_activities(tenant_id)
     activities.append(activity)
-    with open(ACTIVITY_FILE, "w") as f:
+    with open(filename, "w") as f:
         json.dump(activities, f, indent=4)
 
-def get_all_violations_flat():
-    history = get_history()
+def get_all_violations_flat(tenant_id: str = "tenant-security-hq"):
+    history = get_history(tenant_id)
     violations = []
     for audit in history:
         audit_id = audit.get("id")
@@ -725,12 +1040,20 @@ def get_all_violations_flat():
                 vio["updated_at"] = vio.get("created_at")
             if "mitigation_notes" not in vio:
                 vio["mitigation_notes"] = ""
+            if "violation_type" not in vio:
+                vio["violation_type"] = "GENERAL"
+            if "policy_category" not in vio:
+                vio["policy_category"] = "Compliance"
+            if "fingerprint" not in vio or not vio["fingerprint"]:
+                vio["fingerprint"] = make_violation_fingerprint(vio)
+            if "sanitized_evidence" not in vio or not vio["sanitized_evidence"]:
+                vio["sanitized_evidence"] = extract_and_sanitize_evidence(vio.get("log_entry", ""))
             
             violations.append((audit_id, vio))
     return violations
 
-def update_violation_in_history(violation_id: str, updated_vio: dict):
-    history = get_history()
+def update_violation_in_history(violation_id: str, updated_vio: dict, tenant_id: str = "tenant-security-hq"):
+    history = get_history(tenant_id)
     found = False
     for audit in history:
         for vio in audit.get("violations", []):
@@ -741,47 +1064,19 @@ def update_violation_in_history(violation_id: str, updated_vio: dict):
         if found:
             break
     if found:
-        with open(HISTORY_FILE, "w") as f:
+        filename = get_tenant_file(HISTORY_FILE, tenant_id)
+        with open(filename, "w") as f:
             json.dump(history, f, indent=4)
         return True
     return False
 
-# Mock Authentication Token Resolver
-from fastapi import Header, Depends
-def get_current_user(authorization: str = Header(None)):
-    if not authorization:
-        # Strict requirement: deriving identity from auth header.
-        # Fallback to employee for simple local dev testing
-        return {
-            "email": "employee.ross@security-hq.com",
-            "role": "EMPLOYEE",
-            "employee_id": "EMP-3430",
-            "name": "Ross"
-        }
-    if not authorization.startswith("Bearer "):
-        raise HTTPException(status_code=401, detail="Unauthorized: Missing or invalid token.")
-    
-    token = authorization[7:].strip()
-    parts = token.split(":")
-    if len(parts) != 2:
-        raise HTTPException(status_code=401, detail="Unauthorized: Invalid token format.")
-    
-    email, role = parts[0], parts[1].upper()
-    emp_id = "EMP-3430" if "ross" in email.lower() else email.split("@")[0].upper()
-    name = email.split("@")[0].capitalize()
-    
-    return {
-        "email": email,
-        "role": role,
-        "employee_id": emp_id,
-        "name": name
-    }
+
 
 # Seed Demo Lifecycle Data on startup
-def seed_data_if_empty():
-    history = get_history()
+def seed_data_if_empty(tenant_id: str = "tenant-security-hq"):
+    history = get_history(tenant_id)
     if not history:
-        audit_id = "audit-demo-123"
+        audit_id = f"audit-demo-{tenant_id}"
         
         now_utc = datetime.utcnow()
         timestamp = now_utc.isoformat() + "Z"
@@ -996,7 +1291,51 @@ def seed_data_if_empty():
                 }
             }
         ]
-        
+        # Rewrite violation IDs and assignments to be tenant-specific
+        suffix = tenant_id.replace("tenant-", "")
+        for idx, v in enumerate(violations):
+            v["id"] = f"VIO-{suffix}-{idx+1}"
+            v["tenant_id"] = tenant_id
+            
+            # Map index to appropriate demonstration classifications
+            if idx == 0:
+                v["violation_type"] = "KEY_LEAK"
+                v["policy_category"] = "Access Control"
+            elif idx == 1:
+                v["violation_type"] = "TRAINING_INCOMPLETE"
+                v["policy_category"] = "Training"
+            elif idx == 2:
+                v["violation_type"] = "MFA_BYPASS"
+                v["policy_category"] = "Financial Control"
+            else:
+                v["violation_type"] = "UNAUTHORIZED_ACCESS"
+                v["policy_category"] = "Data Privacy"
+                
+            v["fingerprint"] = make_violation_fingerprint(v)
+            v["sanitized_evidence"] = extract_and_sanitize_evidence(v.get("log_entry", ""))
+            if tenant_id == "tenant-company-a":
+                v["assigned_employee_id"] = "EMP-A-01"
+                v["assigned_employee_name"] = "Bob"
+                v["assigned_to"] = {
+                    "employee_id": "EMP-A-01",
+                    "name": "Bob",
+                    "email": "employee.bob@company-a.com",
+                    "department": "IT",
+                    "department_lead_name": "Alice Manager",
+                    "department_lead_email": "hr.alice@company-a.com"
+                }
+            elif tenant_id == "tenant-company-b":
+                v["assigned_employee_id"] = "EMP-B-01"
+                v["assigned_employee_name"] = "David"
+                v["assigned_to"] = {
+                    "employee_id": "EMP-B-01",
+                    "name": "David",
+                    "email": "employee.david@company-b.com",
+                    "department": "IT",
+                    "department_lead_name": "Charlie Manager",
+                    "department_lead_email": "hr.charlie@company-b.com"
+                }
+
         audit_record = {
             "id": audit_id,
             "timestamp": timestamp,
@@ -1014,76 +1353,76 @@ def seed_data_if_empty():
             "violations": violations,
             "alert": {"triggered": True, "recipient": "auditor.compliance@firm-wide.com", "violation_count": 3, "message": "Demo Seeding Alerts Triggered."}
         }
-        save_to_history(audit_record)
+        save_to_history(audit_record, tenant_id)
         
-        # Seed escalation notification events for VIO-demo-2 (High breached)
+        # Seed escalation notification events for VIO-{suffix}-2 (High breached)
         notifs = [
             {
-                "notification_id": "NOTIF-SEED-1",
-                "violation_id": "VIO-demo-2",
+                "notification_id": f"NOTIF-SEED-{suffix}-1",
+                "violation_id": f"VIO-{suffix}-2",
                 "event_type": "SLA_CREATED",
-                "recipient_name": "Ross",
-                "recipient_email": "employee.ross@security-hq.com",
+                "recipient_name": "Ross" if tenant_id == "tenant-security-hq" else ("Bob" if tenant_id == "tenant-company-a" else "David"),
+                "recipient_email": "employee.ross@security-hq.com" if tenant_id == "tenant-security-hq" else ("employee.bob@company-a.com" if tenant_id == "tenant-company-a" else "employee.david@company-b.com"),
                 "channel": "MOCK_EMAIL",
                 "status": "SENT",
-                "message": "SLA Created: A new compliance violation VIO-demo-2 has been logged.",
+                "message": f"SLA Created: A new compliance violation VIO-{suffix}-2 has been logged.",
                 "created_at": (vio2_created + timedelta(minutes=1)).isoformat() + "Z"
             },
             {
-                "notification_id": "NOTIF-SEED-2",
-                "violation_id": "VIO-demo-2",
+                "notification_id": f"NOTIF-SEED-{suffix}-2",
+                "violation_id": f"VIO-{suffix}-2",
                 "event_type": "SLA_WARNING_50",
-                "recipient_name": "Ross",
-                "recipient_email": "employee.ross@security-hq.com",
+                "recipient_name": "Ross" if tenant_id == "tenant-security-hq" else ("Bob" if tenant_id == "tenant-company-a" else "David"),
+                "recipient_email": "employee.ross@security-hq.com" if tenant_id == "tenant-security-hq" else ("employee.bob@company-a.com" if tenant_id == "tenant-company-a" else "employee.david@company-b.com"),
                 "channel": "MOCK_EMAIL",
                 "status": "SENT",
-                "message": "SLA Reminder: 50% of the resolution deadline for VIO-demo-2 has elapsed.",
+                "message": f"SLA Reminder: 50% of the resolution deadline for VIO-{suffix}-2 has elapsed.",
                 "created_at": (vio2_created + timedelta(hours=24)).isoformat() + "Z"
             },
             {
-                "notification_id": "NOTIF-SEED-3",
-                "violation_id": "VIO-demo-2",
+                "notification_id": f"NOTIF-SEED-{suffix}-3",
+                "violation_id": f"VIO-{suffix}-2",
                 "event_type": "SLA_WARNING_80",
-                "recipient_name": "Ross",
-                "recipient_email": "employee.ross@security-hq.com",
+                "recipient_name": "Ross" if tenant_id == "tenant-security-hq" else ("Bob" if tenant_id == "tenant-company-a" else "David"),
+                "recipient_email": "employee.ross@security-hq.com" if tenant_id == "tenant-security-hq" else ("employee.bob@company-a.com" if tenant_id == "tenant-company-a" else "employee.david@company-b.com"),
                 "channel": "MOCK_EMAIL",
                 "status": "SENT",
-                "message": "SLA Warning: 80% of the resolution deadline for VIO-demo-2 has elapsed.",
+                "message": f"SLA Warning: 80% of the resolution deadline for VIO-{suffix}-2 has elapsed.",
                 "created_at": (vio2_created + timedelta(hours=38.4)).isoformat() + "Z"
             },
             {
-                "notification_id": "NOTIF-SEED-4",
-                "violation_id": "VIO-demo-2",
+                "notification_id": f"NOTIF-SEED-{suffix}-4",
+                "violation_id": f"VIO-{suffix}-2",
                 "event_type": "SLA_BREACHED",
-                "recipient_name": "Sales Manager",
-                "recipient_email": "sales-manager@example.com",
+                "recipient_name": "Sales Manager" if tenant_id == "tenant-security-hq" else ("Alice Manager" if tenant_id == "tenant-company-a" else "Charlie Manager"),
+                "recipient_email": "sales-manager@example.com" if tenant_id == "tenant-security-hq" else ("hr.alice@company-a.com" if tenant_id == "tenant-company-a" else "hr.charlie@company-b.com"),
                 "channel": "MOCK_EMAIL",
                 "status": "SENT",
-                "message": "SLA BREACHED: High-risk violation VIO-demo-2 has missed its resolution SLA. Department Lead notified.",
+                "message": f"SLA BREACHED: High-risk violation VIO-{suffix}-2 has missed its resolution SLA. Department Lead notified.",
                 "created_at": (vio2_created + timedelta(hours=48)).isoformat() + "Z"
             }
         ]
-        save_notifications(notifs)
+        save_notifications(notifs, tenant_id)
 
         activities = [
             {
-                "activity_id": "ACT-demo-1",
-                "violation_id": "VIO-demo-2",
-                "actor_id": "employee.ross@security-hq.com",
-                "actor_name": "Ross",
+                "activity_id": f"ACT-demo-{suffix}-1",
+                "violation_id": f"VIO-{suffix}-2",
+                "actor_id": "employee.ross@security-hq.com" if tenant_id == "tenant-security-hq" else ("employee.bob@company-a.com" if tenant_id == "tenant-company-a" else "employee.david@company-b.com"),
+                "actor_name": "Ross" if tenant_id == "tenant-security-hq" else ("Bob" if tenant_id == "tenant-company-a" else "David"),
                 "actor_role": "EMPLOYEE",
                 "action": "START_MITIGATION",
                 "previous_status": "OPEN",
                 "new_status": "IN_PROGRESS",
-                "comment": "Ross started training remediation.",
+                "comment": f"{'Ross' if tenant_id == 'tenant-security-hq' else ('Bob' if tenant_id == 'tenant-company-a' else 'David')} started training remediation.",
                 "evidence_url": None,
                 "created_at": (vio2_created + timedelta(hours=5)).isoformat() + "Z"
             },
             {
-                "activity_id": "ACT-demo-2",
-                "violation_id": "VIO-demo-3",
-                "actor_id": "employee.ross@security-hq.com",
-                "actor_name": "Ross",
+                "activity_id": f"ACT-demo-{suffix}-2",
+                "violation_id": f"VIO-{suffix}-3",
+                "actor_id": "employee.ross@security-hq.com" if tenant_id == "tenant-security-hq" else ("employee.bob@company-a.com" if tenant_id == "tenant-company-a" else "employee.david@company-b.com"),
+                "actor_name": "Ross" if tenant_id == "tenant-security-hq" else ("Bob" if tenant_id == "tenant-company-a" else "David"),
                 "actor_role": "EMPLOYEE",
                 "action": "SUBMIT_MITIGATION",
                 "previous_status": "IN_PROGRESS",
@@ -1093,10 +1432,10 @@ def seed_data_if_empty():
                 "created_at": (vio3_created + timedelta(hours=1)).isoformat() + "Z"
             },
             {
-                "activity_id": "ACT-demo-3",
-                "violation_id": "VIO-demo-4",
-                "actor_id": "employee.ross@security-hq.com",
-                "actor_name": "Ross",
+                "activity_id": f"ACT-demo-{suffix}-3",
+                "violation_id": f"VIO-{suffix}-4",
+                "actor_id": "employee.ross@security-hq.com" if tenant_id == "tenant-security-hq" else ("employee.bob@company-a.com" if tenant_id == "tenant-company-a" else "employee.david@company-b.com"),
+                "actor_name": "Ross" if tenant_id == "tenant-security-hq" else ("Bob" if tenant_id == "tenant-company-a" else "David"),
                 "actor_role": "EMPLOYEE",
                 "action": "SUBMIT_MITIGATION",
                 "previous_status": "IN_PROGRESS",
@@ -1106,9 +1445,9 @@ def seed_data_if_empty():
                 "created_at": (vio4_created + timedelta(days=2)).isoformat() + "Z"
             },
             {
-                "activity_id": "ACT-demo-4",
-                "violation_id": "VIO-demo-4",
-                "actor_id": "auditor.compliance@firm-wide.com",
+                "activity_id": f"ACT-demo-{suffix}-4",
+                "violation_id": f"VIO-{suffix}-4",
+                "actor_id": "auditor.compliance@firm-wide.com" if tenant_id == "tenant-security-hq" else ("hr.alice@company-a.com" if tenant_id == "tenant-company-a" else "hr.charlie@company-b.com"),
                 "actor_name": "HR Reviewer",
                 "actor_role": "HR",
                 "action": "VERIFIED_RESOLVED",
@@ -1119,13 +1458,16 @@ def seed_data_if_empty():
                 "created_at": (vio4_created + timedelta(days=3)).isoformat() + "Z"
             }
         ]
-        with open("activity.json", "w") as f:
+        activity_file = get_tenant_file("activity.json", tenant_id)
+        with open(activity_file, "w") as f:
             json.dump(activities, f, indent=4)
 
 @app.on_event("startup")
 def startup_event():
-    seed_data_if_empty()
-    seed_policies_if_empty()
+    tenants = ["tenant-security-hq", "tenant-company-a", "tenant-company-b"]
+    for t in tenants:
+        seed_data_if_empty(t)
+        seed_policies_if_empty(t)
 
 # Lifecycle Transition Validation Logic
 VALID_TRANSITIONS = {
@@ -1175,11 +1517,11 @@ def list_violations(
     overdue: bool = Query(None),
     current_user: dict = Depends(get_current_user)
 ):
-    all_vios = get_all_violations_flat()
+    all_vios = get_all_violations_flat(current_user["tenant_id"])
     filtered = []
     
     user_role = current_user["role"]
-    user_emp_id = current_user["employee_id"]
+    user_emp_id = current_user.get("employee_id")
     
     for audit_id, vio in all_vios:
         if user_role == "EMPLOYEE" and vio.get("assigned_employee_id") != user_emp_id:
@@ -1214,7 +1556,9 @@ def list_violations(
 
 @app.get("/api/violations/sla-summary")
 def get_sla_summary(current_user: dict = Depends(get_current_user)):
-    violations_flat = get_all_violations_flat()
+    violations_flat = get_all_violations_flat(current_user["tenant_id"])
+    if current_user["role"] == "EMPLOYEE":
+        violations_flat = [item for item in violations_flat if item[1].get("assigned_employee_id") == current_user["employee_id"]]
     
     now_utc = datetime.utcnow()
     for _, vio in violations_flat:
@@ -1261,7 +1605,7 @@ def get_sla_summary(current_user: dict = Depends(get_current_user)):
 
 @app.get("/api/violations/{violation_id}")
 def get_violation_by_id(violation_id: str, current_user: dict = Depends(get_current_user)):
-    all_vios = get_all_violations_flat()
+    all_vios = get_all_violations_flat(current_user["tenant_id"])
     for audit_id, vio in all_vios:
         if vio.get("id") == violation_id:
             if current_user["role"] == "EMPLOYEE" and vio.get("assigned_employee_id") != current_user["employee_id"]:
@@ -1273,7 +1617,8 @@ def get_violation_by_id(violation_id: str, current_user: dict = Depends(get_curr
 
 @app.patch("/api/violations/{violation_id}/start-mitigation")
 def start_mitigation(violation_id: str, current_user: dict = Depends(get_current_user)):
-    all_vios = get_all_violations_flat()
+    tenant_id = current_user["tenant_id"]
+    all_vios = get_all_violations_flat(tenant_id)
     target_vio = None
     for audit_id, vio in all_vios:
         if vio.get("id") == violation_id:
@@ -1294,7 +1639,7 @@ def start_mitigation(violation_id: str, current_user: dict = Depends(get_current
     target_vio["status"] = new_status
     target_vio["updated_at"] = datetime.now().isoformat()
     
-    update_violation_in_history(violation_id, target_vio)
+    update_violation_in_history(violation_id, target_vio, tenant_id)
     
     act_id = f"ACT-{str(uuid.uuid4())[:8]}"
     activity = {
@@ -1308,9 +1653,10 @@ def start_mitigation(violation_id: str, current_user: dict = Depends(get_current
         "new_status": new_status,
         "comment": f"{current_user['name']} started remediation.",
         "evidence_url": None,
-        "created_at": datetime.now().isoformat()
+        "created_at": datetime.now().isoformat(),
+        "tenant_id": tenant_id
     }
-    save_activity(activity)
+    save_activity(activity, tenant_id)
     
     return {"status": "success", "violation": target_vio}
 
@@ -1320,7 +1666,8 @@ def submit_verification(
     req: SubmitVerificationRequest,
     current_user: dict = Depends(get_current_user)
 ):
-    all_vios = get_all_violations_flat()
+    tenant_id = current_user["tenant_id"]
+    all_vios = get_all_violations_flat(tenant_id)
     target_vio = None
     for audit_id, vio in all_vios:
         if vio.get("id") == violation_id:
@@ -1351,7 +1698,7 @@ def submit_verification(
     target_vio["submitted_for_verification_at"] = datetime.now().isoformat()
     target_vio["updated_at"] = datetime.now().isoformat()
     
-    update_violation_in_history(violation_id, target_vio)
+    update_violation_in_history(violation_id, target_vio, tenant_id)
     
     act_id = f"ACT-{str(uuid.uuid4())[:8]}"
     activity = {
@@ -1365,9 +1712,10 @@ def submit_verification(
         "new_status": new_status,
         "comment": req.employee_mitigation_notes,
         "evidence_url": req.mitigation_evidence_url,
-        "created_at": datetime.now().isoformat()
+        "created_at": datetime.now().isoformat(),
+        "tenant_id": tenant_id
     }
-    save_activity(activity)
+    save_activity(activity, tenant_id)
     
     return {"status": "success", "violation": target_vio}
 
@@ -1380,7 +1728,8 @@ def review_violation(
     if current_user["role"] != "HR":
         raise HTTPException(status_code=403, detail="Access denied: Only HR users can review violations.")
         
-    all_vios = get_all_violations_flat()
+    tenant_id = current_user["tenant_id"]
+    all_vios = get_all_violations_flat(tenant_id)
     target_vio = None
     for audit_id, vio in all_vios:
         if vio.get("id") == violation_id:
@@ -1414,7 +1763,7 @@ def review_violation(
     target_vio["status"] = new_status
     target_vio["updated_at"] = datetime.now().isoformat()
     
-    update_violation_in_history(violation_id, target_vio)
+    update_violation_in_history(violation_id, target_vio, tenant_id)
     
     act_id = f"ACT-{str(uuid.uuid4())[:8]}"
     activity = {
@@ -1428,15 +1777,17 @@ def review_violation(
         "new_status": new_status,
         "comment": req.comment or f"HR Reviewer resolved the issue.",
         "evidence_url": target_vio.get("mitigation_evidence_url"),
-        "created_at": datetime.now().isoformat()
+        "created_at": datetime.now().isoformat(),
+        "tenant_id": tenant_id
     }
-    save_activity(activity)
+    save_activity(activity, tenant_id)
     
     return {"status": "success", "violation": target_vio}
 
 @app.get("/api/violations/{violation_id}/activity")
 def get_violation_activity(violation_id: str, current_user: dict = Depends(get_current_user)):
-    all_vios = get_all_violations_flat()
+    tenant_id = current_user["tenant_id"]
+    all_vios = get_all_violations_flat(tenant_id)
     target_vio = None
     for audit_id, vio in all_vios:
         if vio.get("id") == violation_id:
@@ -1449,7 +1800,7 @@ def get_violation_activity(violation_id: str, current_user: dict = Depends(get_c
     if current_user["role"] == "EMPLOYEE" and target_vio.get("assigned_employee_id") != current_user["employee_id"]:
         raise HTTPException(status_code=403, detail="Access denied: You are not assigned to this violation.")
         
-    activities = get_activities()
+    activities = get_activities(tenant_id)
     filtered_act = [act for act in activities if act.get("violation_id") == violation_id]
     filtered_act.sort(key=lambda x: x.get("created_at", ""))
     return filtered_act
@@ -1474,6 +1825,7 @@ class PolicyModel(BaseModel):
     is_active: bool = True
     created_at: str
     content: str
+    tenant_id: str | None = None
 
 class AcknowledgmentModel(BaseModel):
     acknowledgment_id: str
@@ -1494,6 +1846,7 @@ class AcknowledgmentModel(BaseModel):
     authentication_method: str = "JWT_LOGIN"
     status: str = "SIGNED"
     receipt_hash: str
+    tenant_id: str | None = None
 
 class AuditEventModel(BaseModel):
     event_id: str
@@ -1505,53 +1858,60 @@ class AuditEventModel(BaseModel):
     server_timestamp: str
     source_ip: str
     user_agent: str
+    tenant_id: str | None = None
 
 class AcknowledgeRequest(BaseModel):
     typed_signature: str
     electronic_consent: bool
     acknowledged_reading: bool
 
-def get_policies():
-    if not os.path.exists(POLICIES_FILE):
+def get_policies(tenant_id: str = "tenant-security-hq"):
+    filename = get_tenant_file(POLICIES_FILE, tenant_id)
+    if not os.path.exists(filename):
         return []
     try:
-        with open(POLICIES_FILE, "r") as f:
+        with open(filename, "r") as f:
             return json.load(f)
     except Exception:
         return []
 
-def save_policies(policies):
-    with open(POLICIES_FILE, "w") as f:
+def save_policies(policies, tenant_id: str = "tenant-security-hq"):
+    filename = get_tenant_file(POLICIES_FILE, tenant_id)
+    with open(filename, "w") as f:
         json.dump(policies, f, indent=2)
 
-def get_acknowledgments():
-    if not os.path.exists(ACK_FILE):
+def get_acknowledgments(tenant_id: str = "tenant-security-hq"):
+    filename = get_tenant_file(ACK_FILE, tenant_id)
+    if not os.path.exists(filename):
         return []
     try:
-        with open(ACK_FILE, "r") as f:
+        with open(filename, "r") as f:
             return json.load(f)
     except Exception:
         return []
 
-def save_acknowledgments(acks):
-    with open(ACK_FILE, "w") as f:
+def save_acknowledgments(acks, tenant_id: str = "tenant-security-hq"):
+    filename = get_tenant_file(ACK_FILE, tenant_id)
+    with open(filename, "w") as f:
         json.dump(acks, f, indent=2)
 
-def get_policy_audit_trail():
-    if not os.path.exists(POLICY_AUDIT_FILE):
+def get_policy_audit_trail(tenant_id: str = "tenant-security-hq"):
+    filename = get_tenant_file(POLICY_AUDIT_FILE, tenant_id)
+    if not os.path.exists(filename):
         return []
     try:
-        with open(POLICY_AUDIT_FILE, "r") as f:
+        with open(filename, "r") as f:
             return json.load(f)
     except Exception:
         return []
 
-def save_policy_audit_trail(trail):
-    with open(POLICY_AUDIT_FILE, "w") as f:
+def save_policy_audit_trail(trail, tenant_id: str = "tenant-security-hq"):
+    filename = get_tenant_file(POLICY_AUDIT_FILE, tenant_id)
+    with open(filename, "w") as f:
         json.dump(trail, f, indent=2)
 
-def log_audit_event(actor_id: str, action: str, policy_version: str, document_sha256: str, source_ip: str, user_agent: str, acknowledgment_id: str = None):
-    trail = get_policy_audit_trail()
+def log_audit_event(actor_id: str, action: str, policy_version: str, document_sha256: str, source_ip: str, user_agent: str, acknowledgment_id: str = None, tenant_id: str = "tenant-security-hq"):
+    trail = get_policy_audit_trail(tenant_id)
     event = {
         "event_id": f"EVT-{str(uuid.uuid4())[:8].upper()}",
         "acknowledgment_id": acknowledgment_id,
@@ -1561,10 +1921,11 @@ def log_audit_event(actor_id: str, action: str, policy_version: str, document_sh
         "document_sha256": document_sha256,
         "server_timestamp": datetime.utcnow().isoformat() + "Z",
         "source_ip": source_ip,
-        "user_agent": user_agent
+        "user_agent": user_agent,
+        "tenant_id": tenant_id
     }
     trail.append(event)
-    save_policy_audit_trail(trail)
+    save_policy_audit_trail(trail, tenant_id)
 
 def mask_ip(ip: str) -> str:
     if not ip:
@@ -1586,8 +1947,8 @@ MOCK_EMPLOYEES = [
     {"employee_id": "EMP-4109", "name": "Alice Cooper", "email": "alice.cooper@security-hq.com", "department": "Sales"}
 ]
 
-def seed_policies_if_empty():
-    policies = get_policies()
+def seed_policies_if_empty(tenant_id: str = "tenant-security-hq"):
+    policies = get_policies(tenant_id)
     if not policies:
         policies = [
             {
@@ -1615,7 +1976,8 @@ We collect information only for lawful and system-functional requirements. Data 
 
 ## 4. Enforcement and Violations
 Breaches will lead to automatic system revocation, security investigation, and potential contract termination. Thank you for your commitment to client privacy and organizational integrity.
-"""
+""",
+                "tenant_id": tenant_id
             },
             {
                 "policy_id": "POL-AUP-002",
@@ -1639,12 +2001,13 @@ The systems, networks, and computing devices provided by Security-HQ are intende
 
 ## 3. Safe Usage
 Employees must report potential breaches to security-alerts@security-hq.com immediately. System audits are conducted weekly to verify configuration adherence.
-"""
+""",
+                "tenant_id": tenant_id
             }
         ]
-        save_policies(policies)
+        save_policies(policies, tenant_id)
 
-    acks = get_acknowledgments()
+    acks = get_acknowledgments(tenant_id)
     if not acks:
         acks = [
             {
@@ -1652,12 +2015,12 @@ Employees must report potential breaches to security-alerts@security-hq.com imme
                 "policy_id": "POL-DPP-001",
                 "policy_version": "DPP-2026-v2.1",
                 "policy_document_sha256": "sha256-dfa89104b2b291c104e12c1b2c34d38e2194fbe9426ba29283e390c918a28741",
-                "employee_id": "EMP-1002",
-                "employee_name": "Auditor",
-                "employee_email": "auditor.compliance@firm-wide.com",
-                "department": "HR",
+                "employee_id": "EMP-1002" if tenant_id == "tenant-security-hq" else "EMP-A-01",
+                "employee_name": "Auditor" if tenant_id == "tenant-security-hq" else "Bob",
+                "employee_email": "auditor.compliance@firm-wide.com" if tenant_id == "tenant-security-hq" else "employee.bob@company-a.com",
+                "department": "HR" if tenant_id == "tenant-security-hq" else "IT",
                 "signature_type": "TYPED_NAME",
-                "typed_signature": "Auditor",
+                "typed_signature": "Auditor" if tenant_id == "tenant-security-hq" else "Bob",
                 "electronic_consent": True,
                 "acknowledged_reading": True,
                 "signed_at": "2026-08-15T12:00:00Z",
@@ -1665,19 +2028,20 @@ Employees must report potential breaches to security-alerts@security-hq.com imme
                 "user_agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64)",
                 "authentication_method": "JWT_LOGIN",
                 "status": "SIGNED",
-                "receipt_hash": "6b2a0c4f8e5b41094da98305ab2f4b0ea9d8df2e194fbe9426ba29283e390d23"
+                "receipt_hash": "6b2a0c4f8e5b41094da98305ab2f4b0ea9d8df2e194fbe9426ba29283e390d23",
+                "tenant_id": tenant_id
             },
             {
                 "acknowledgment_id": "ACK-2026-0002",
                 "policy_id": "POL-AUP-002",
                 "policy_version": "AUP-2026-v1.0",
                 "policy_document_sha256": "sha256-b0e77d2d3a3f5f3e5b38d38e2194fbe9426ba29283e390c918a28741b0e77d2d",
-                "employee_id": "EMP-3430",
-                "employee_name": "Ross",
-                "employee_email": "employee.ross@security-hq.com",
-                "department": "IT Ops",
+                "employee_id": "EMP-3430" if tenant_id == "tenant-security-hq" else "EMP-A-01",
+                "employee_name": "Ross" if tenant_id == "tenant-security-hq" else "Bob",
+                "employee_email": "employee.ross@security-hq.com" if tenant_id == "tenant-security-hq" else "employee.bob@company-a.com",
+                "department": "IT Ops" if tenant_id == "tenant-security-hq" else "IT",
                 "signature_type": "TYPED_NAME",
-                "typed_signature": "Ross",
+                "typed_signature": "Ross" if tenant_id == "tenant-security-hq" else "Bob",
                 "electronic_consent": True,
                 "acknowledged_reading": True,
                 "signed_at": "2026-08-12T14:30:00Z",
@@ -1685,43 +2049,47 @@ Employees must report potential breaches to security-alerts@security-hq.com imme
                 "user_agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7)",
                 "authentication_method": "JWT_LOGIN",
                 "status": "SIGNED",
-                "receipt_hash": "ab83c1b0c95029a8f28d841b9426210f81d9f041b0e77d2d2a9f3b392a0149ff"
+                "receipt_hash": "ab83c1b0c95029a8f28d841b9426210f81d9f041b0e77d2d2a9f3b392a0149ff",
+                "tenant_id": tenant_id
             }
         ]
-        save_acknowledgments(acks)
+        save_acknowledgments(acks, tenant_id)
 
-    trail = get_policy_audit_trail()
+    trail = get_policy_audit_trail(tenant_id)
     if not trail:
         trail = [
             {
                 "event_id": "EVT-MOCK-1",
                 "acknowledgment_id": "ACK-2026-0001",
-                "actor_id": "auditor.compliance@firm-wide.com",
+                "actor_id": "auditor.compliance@firm-wide.com" if tenant_id == "tenant-security-hq" else "employee.bob@company-a.com",
                 "action": "POLICY_SIGNED",
                 "policy_version": "DPP-2026-v2.1",
                 "document_sha256": "sha256-dfa89104b2b291c104e12c1b2c34d38e2194fbe9426ba29283e390c918a28741",
                 "server_timestamp": "2026-08-15T12:00:00Z",
                 "source_ip": "203.0.113.123",
-                "user_agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64)"
+                "user_agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64)",
+                "tenant_id": tenant_id
             },
             {
                 "event_id": "EVT-MOCK-2",
                 "acknowledgment_id": "ACK-2026-0002",
-                "actor_id": "employee.ross@security-hq.com",
+                "actor_id": "employee.ross@security-hq.com" if tenant_id == "tenant-security-hq" else "employee.bob@company-a.com",
                 "action": "POLICY_SIGNED",
                 "policy_version": "AUP-2026-v1.0",
                 "document_sha256": "sha256-b0e77d2d3a3f5f3e5b38d38e2194fbe9426ba29283e390c918a28741b0e77d2d",
                 "server_timestamp": "2026-08-12T14:30:00Z",
                 "source_ip": "203.0.113.88",
-                "user_agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7)"
+                "user_agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7)",
+                "tenant_id": tenant_id
             }
         ]
-        save_policy_audit_trail(trail)
+        save_policy_audit_trail(trail, tenant_id)
 
 @app.get("/api/policies/assigned-to-me")
 def get_assigned_policies(current_user: dict = Depends(get_current_user)):
-    policies = get_policies()
-    acks = get_acknowledgments()
+    tenant_id = current_user["tenant_id"]
+    policies = get_policies(tenant_id)
+    acks = get_acknowledgments(tenant_id)
     
     log_audit_event(
         actor_id=current_user["email"],
@@ -1729,7 +2097,8 @@ def get_assigned_policies(current_user: dict = Depends(get_current_user)):
         policy_version="ALL",
         document_sha256="N/A",
         source_ip="203.0.113.xxx",
-        user_agent="System"
+        user_agent="System",
+        tenant_id=tenant_id
     )
     
     assigned = []
@@ -1762,14 +2131,16 @@ def get_assigned_policies(current_user: dict = Depends(get_current_user)):
             "content": pol["content"],
             "status": status,
             "acknowledgment_id": emp_ack.get("acknowledgment_id") if emp_ack else None,
-            "signed_at": emp_ack.get("signed_at") if emp_ack else None
+            "signed_at": emp_ack.get("signed_at") if emp_ack else None,
+            "tenant_id": tenant_id
         })
         
     return assigned
 
 @app.get("/api/policies/{policy_id}")
 def get_policy_detail(policy_id: str, current_user: dict = Depends(get_current_user)):
-    policies = get_policies()
+    tenant_id = current_user["tenant_id"]
+    policies = get_policies(tenant_id)
     for pol in policies:
         if pol["policy_id"] == policy_id:
             log_audit_event(
@@ -1778,14 +2149,16 @@ def get_policy_detail(policy_id: str, current_user: dict = Depends(get_current_u
                 policy_version=pol["version"],
                 document_sha256=pol["document_sha256"],
                 source_ip="203.0.113.xxx",
-                user_agent="System"
+                user_agent="System",
+                tenant_id=tenant_id
             )
             return pol
     raise HTTPException(status_code=404, detail="Policy not found")
 
 @app.post("/api/policies/{policy_id}/acknowledge")
 def acknowledge_policy(policy_id: str, req_body: AcknowledgeRequest, request: Request, current_user: dict = Depends(get_current_user)):
-    policies = get_policies()
+    tenant_id = current_user["tenant_id"]
+    policies = get_policies(tenant_id)
     target_policy = None
     for pol in policies:
         if pol["policy_id"] == policy_id and pol.get("is_active", True):
@@ -1806,7 +2179,7 @@ def acknowledge_policy(policy_id: str, req_body: AcknowledgeRequest, request: Re
     if not req_body.acknowledged_reading:
         raise HTTPException(status_code=400, detail="You must confirm you have read and understood the policy.")
         
-    acks = get_acknowledgments()
+    acks = get_acknowledgments(tenant_id)
     for ack in acks:
         if (ack.get("employee_email") == current_user["email"] and 
             ack.get("policy_id") == policy_id and 
@@ -1844,11 +2217,12 @@ def acknowledge_policy(policy_id: str, req_body: AcknowledgeRequest, request: Re
         "user_agent": user_agent,
         "authentication_method": "JWT_LOGIN",
         "status": "SIGNED",
-        "receipt_hash": receipt_hash
+        "receipt_hash": receipt_hash,
+        "tenant_id": tenant_id
     }
     
     acks.append(ack)
-    save_acknowledgments(acks)
+    save_acknowledgments(acks, tenant_id)
     
     log_audit_event(
         acknowledgment_id=ack_id,
@@ -1857,7 +2231,8 @@ def acknowledge_policy(policy_id: str, req_body: AcknowledgeRequest, request: Re
         policy_version=target_policy["version"],
         document_sha256=target_policy["document_sha256"],
         source_ip=client_ip,
-        user_agent=user_agent
+        user_agent=user_agent,
+        tenant_id=tenant_id
     )
     
     ack_copy = dict(ack)
@@ -1867,7 +2242,8 @@ def acknowledge_policy(policy_id: str, req_body: AcknowledgeRequest, request: Re
 
 @app.get("/api/acknowledgments/me")
 def get_my_acknowledgments(current_user: dict = Depends(get_current_user)):
-    acks = get_acknowledgments()
+    tenant_id = current_user["tenant_id"]
+    acks = get_acknowledgments(tenant_id)
     my_acks = [ack for ack in acks if ack.get("employee_email") == current_user["email"]]
     
     res = []
@@ -1879,7 +2255,8 @@ def get_my_acknowledgments(current_user: dict = Depends(get_current_user)):
 
 @app.get("/api/acknowledgments/{acknowledgment_id}/receipt")
 def get_receipt(acknowledgment_id: str, current_user: dict = Depends(get_current_user)):
-    acks = get_acknowledgments()
+    tenant_id = current_user["tenant_id"]
+    acks = get_acknowledgments(tenant_id)
     target_ack = None
     for ack in acks:
         if ack.get("acknowledgment_id") == acknowledgment_id:
@@ -1902,7 +2279,8 @@ def get_receipt(acknowledgment_id: str, current_user: dict = Depends(get_current
         policy_version=target_ack["policy_version"],
         document_sha256=target_ack["policy_document_sha256"],
         source_ip="203.0.113.xxx",
-        user_agent="System"
+        user_agent="System",
+        tenant_id=tenant_id
     )
     
     copy_ack = dict(target_ack)
@@ -1916,13 +2294,25 @@ def get_hr_acknowledgments(current_user: dict = Depends(get_current_user)):
     if current_user["role"] != "HR":
         raise HTTPException(status_code=403, detail="HR role required")
         
-    policies = get_policies()
-    acks = get_acknowledgments()
+    tenant_id = current_user["tenant_id"]
+    policies = get_policies(tenant_id)
+    acks = get_acknowledgments(tenant_id)
     
     results = []
     today_str = datetime.utcnow().strftime("%Y-%m-%d")
     
-    for emp in MOCK_EMPLOYEES:
+    # Select Mock employees list based on tenant to be clean
+    tenant_employees = [
+        emp for emp in MOCK_EMPLOYEES 
+        if (tenant_id == "tenant-security-hq" and emp["email"].endswith("@security-hq.com")) or
+           (tenant_id == "tenant-company-a" and emp["email"].endswith("@company-a.com")) or
+           (tenant_id == "tenant-company-b" and emp["email"].endswith("@company-b.com")) or
+           emp["email"] == "auditor.compliance@firm-wide.com"
+    ]
+    if not tenant_employees:
+        tenant_employees = MOCK_EMPLOYEES
+        
+    for emp in tenant_employees:
         for pol in policies:
             if not pol.get("is_active", True):
                 continue
@@ -1972,7 +2362,8 @@ def get_hr_acknowledgment_detail(acknowledgment_id: str, current_user: dict = De
     if current_user["role"] != "HR":
         raise HTTPException(status_code=403, detail="HR role required")
         
-    acks = get_acknowledgments()
+    tenant_id = current_user["tenant_id"]
+    acks = get_acknowledgments(tenant_id)
     target_ack = None
     for ack in acks:
         if ack.get("acknowledgment_id") == acknowledgment_id:
@@ -1989,7 +2380,8 @@ def send_reminders(policy_id: str, current_user: dict = Depends(get_current_user
     if current_user["role"] != "HR":
         raise HTTPException(status_code=403, detail="HR role required")
         
-    policies = get_policies()
+    tenant_id = current_user["tenant_id"]
+    policies = get_policies(tenant_id)
     target_policy = None
     for pol in policies:
         if pol["policy_id"] == policy_id:
@@ -2005,7 +2397,8 @@ def send_reminders(policy_id: str, current_user: dict = Depends(get_current_user
         policy_version=target_policy["version"],
         document_sha256=target_policy["document_sha256"],
         source_ip="203.0.113.xxx",
-        user_agent="System"
+        user_agent="System",
+        tenant_id=tenant_id
     )
     
     return {"status": "success", "message": f"Reminders sent successfully for {target_policy['title']}!"}
@@ -2048,30 +2441,34 @@ DEFAULT_SLA_SETTINGS = {
     "use_short_demo_durations": False
 }
 
-def get_sla_settings():
-    if not os.path.exists(SLA_SETTINGS_FILE):
+def get_sla_settings(tenant_id: str = "tenant-security-hq"):
+    filename = get_tenant_file(SLA_SETTINGS_FILE, tenant_id)
+    if not os.path.exists(filename):
         return DEFAULT_SLA_SETTINGS
     try:
-        with open(SLA_SETTINGS_FILE, "r") as f:
+        with open(filename, "r") as f:
             return json.load(f)
     except Exception:
         return DEFAULT_SLA_SETTINGS
 
-def save_sla_settings(settings):
-    with open(SLA_SETTINGS_FILE, "w") as f:
+def save_sla_settings(settings, tenant_id: str = "tenant-security-hq"):
+    filename = get_tenant_file(SLA_SETTINGS_FILE, tenant_id)
+    with open(filename, "w") as f:
         json.dump(settings, f, indent=2)
 
-def get_notifications():
-    if not os.path.exists(NOTIF_FILE):
+def get_notifications(tenant_id: str = "tenant-security-hq"):
+    filename = get_tenant_file(NOTIF_FILE, tenant_id)
+    if not os.path.exists(filename):
         return []
     try:
-        with open(NOTIF_FILE, "r") as f:
+        with open(filename, "r") as f:
             return json.load(f)
     except Exception:
         return []
 
-def save_notifications(notifs):
-    with open(NOTIF_FILE, "w") as f:
+def save_notifications(notifs, tenant_id: str = "tenant-security-hq"):
+    filename = get_tenant_file(NOTIF_FILE, tenant_id)
+    with open(filename, "w") as f:
         json.dump(notifs, f, indent=2)
 
 class SLARuleModel(BaseModel):
@@ -2098,7 +2495,7 @@ class NotificationEventModel(BaseModel):
 class ManualEscalateRequest(BaseModel):
     comment: str | None = None
 
-def calculate_sla_deadlines(violation: dict, created_at_dt: datetime = None):
+def calculate_sla_deadlines(violation: dict, created_at_dt: datetime = None, tenant_id: str = "tenant-security-hq"):
     if not created_at_dt:
         created_at_str = violation.get("created_at") or datetime.utcnow().isoformat()
         if created_at_str.endswith("Z"):
@@ -2109,7 +2506,7 @@ def calculate_sla_deadlines(violation: dict, created_at_dt: datetime = None):
             created_at_dt = datetime.utcnow()
             
     severity = (violation.get("severity") or "Medium").upper()
-    settings = get_sla_settings()
+    settings = get_sla_settings(tenant_id)
     rule = settings["rules"].get(severity, settings["rules"]["MEDIUM"])
     
     use_demo = settings.get("use_short_demo_durations", False)
@@ -2218,8 +2615,8 @@ def build_notification_message(violation: dict, event_type: str) -> str:
         return f"CRITICAL ESCALATION (Level 2): Unresolved violation {vio_id} ({rule}) remains breached 24 hours after SLA expiration. Escalating to Compliance Director for immediate review."
     return f"SLA Alert: Policy violation alert for {vio_id}."
 
-def create_notification_event(violation_id: str, event_type: str, recipient_name: str, recipient_email: str, message: str, now_utc: datetime):
-    notifs = get_notifications()
+def create_notification_event(violation_id: str, event_type: str, recipient_name: str, recipient_email: str, message: str, now_utc: datetime, tenant_id: str = "tenant-security-hq"):
+    notifs = get_notifications(tenant_id)
     notif_id = f"NOTIF-{str(uuid.uuid4())[:8].upper()}"
     notif = {
         "notification_id": notif_id,
@@ -2230,13 +2627,14 @@ def create_notification_event(violation_id: str, event_type: str, recipient_name
         "channel": "MOCK_EMAIL",
         "status": "SENT",
         "message": message,
-        "created_at": now_utc.isoformat() + "Z"
+        "created_at": now_utc.isoformat() + "Z",
+        "tenant_id": tenant_id
     }
     notifs.append(notif)
-    save_notifications(notifs)
+    save_notifications(notifs, tenant_id)
 
-def check_and_process_slas(now_utc: datetime):
-    history = get_history()
+def check_and_process_slas(now_utc: datetime, tenant_id: str = "tenant-security-hq"):
+    history = get_history(tenant_id)
     updated = False
     
     for audit in history:
@@ -2245,7 +2643,7 @@ def check_and_process_slas(now_utc: datetime):
                 continue
                 
             if "sla" not in vio:
-                ack_due, res_due = calculate_sla_deadlines(vio)
+                ack_due, res_due = calculate_sla_deadlines(vio, tenant_id=tenant_id)
                 vio["sla"] = {
                     "acknowledgment_due_at": ack_due,
                     "resolution_due_at": res_due,
@@ -2286,9 +2684,9 @@ def check_and_process_slas(now_utc: datetime):
                     ack_due_dt = datetime.fromisoformat(ack_due_str)
                     if now_utc > ack_due_dt and not sla.get("warning_ack_sent", False):
                         msg = build_notification_message(vio, "SLA_ACK_OVERDUE")
-                        create_notification_event(vio["id"], "SLA_ACK_OVERDUE", vio["assigned_to"]["name"], vio["assigned_to"]["email"], msg, now_utc)
-                        create_notification_event(vio["id"], "SLA_ACK_OVERDUE", "HR Compliance Team", "auditor.compliance@firm-wide.com", msg, now_utc)
-                        create_notification_event(vio["id"], "SLA_ACK_OVERDUE", vio["assigned_to"]["department_lead_name"], vio["assigned_to"]["department_lead_email"], msg, now_utc)
+                        create_notification_event(vio["id"], "SLA_ACK_OVERDUE", vio["assigned_to"]["name"], vio["assigned_to"]["email"], msg, now_utc, tenant_id)
+                        create_notification_event(vio["id"], "SLA_ACK_OVERDUE", "HR Compliance Team", "auditor.compliance@firm-wide.com", msg, now_utc, tenant_id)
+                        create_notification_event(vio["id"], "SLA_ACK_OVERDUE", vio["assigned_to"]["department_lead_name"], vio["assigned_to"]["department_lead_email"], msg, now_utc, tenant_id)
                         
                         sla["warning_ack_sent"] = True
                         sla["sla_status"] = "ACKNOWLEDGMENT_OVERDUE"
@@ -2296,15 +2694,15 @@ def check_and_process_slas(now_utc: datetime):
                         
             if sla.get("sla_percent_elapsed", 0) >= 50 and not sla.get("warning_50_sent", False):
                 msg = build_notification_message(vio, "SLA_WARNING_50")
-                create_notification_event(vio["id"], "SLA_WARNING_50", vio["assigned_to"]["name"], vio["assigned_to"]["email"], msg, now_utc)
+                create_notification_event(vio["id"], "SLA_WARNING_50", vio["assigned_to"]["name"], vio["assigned_to"]["email"], msg, now_utc, tenant_id)
                 
                 sla["warning_50_sent"] = True
                 updated = True
                 
             if sla.get("sla_percent_elapsed", 0) >= 80 and not sla.get("warning_80_sent", False):
                 msg = build_notification_message(vio, "SLA_WARNING_80")
-                create_notification_event(vio["id"], "SLA_WARNING_80", vio["assigned_to"]["name"], vio["assigned_to"]["email"], msg, now_utc)
-                create_notification_event(vio["id"], "SLA_WARNING_80", "HR Compliance Team", "auditor.compliance@firm-wide.com", msg, now_utc)
+                create_notification_event(vio["id"], "SLA_WARNING_80", vio["assigned_to"]["name"], vio["assigned_to"]["email"], msg, now_utc, tenant_id)
+                create_notification_event(vio["id"], "SLA_WARNING_80", "HR Compliance Team", "auditor.compliance@firm-wide.com", msg, now_utc, tenant_id)
                 
                 sla["warning_80_sent"] = True
                 updated = True
@@ -2318,8 +2716,8 @@ def check_and_process_slas(now_utc: datetime):
                 if now_utc >= res_due_dt:
                     if not sla.get("breach_notification_sent", False):
                         msg = build_notification_message(vio, "SLA_BREACHED")
-                        create_notification_event(vio["id"], "SLA_BREACHED", "HR Compliance Team", "auditor.compliance@firm-wide.com", msg, now_utc)
-                        create_notification_event(vio["id"], "SLA_BREACHED", vio["assigned_to"]["department_lead_name"], vio["assigned_to"]["department_lead_email"], msg, now_utc)
+                        create_notification_event(vio["id"], "SLA_BREACHED", "HR Compliance Team", "auditor.compliance@firm-wide.com", msg, now_utc, tenant_id)
+                        create_notification_event(vio["id"], "SLA_BREACHED", vio["assigned_to"]["department_lead_name"], vio["assigned_to"]["department_lead_email"], msg, now_utc, tenant_id)
                         
                         sla["breach_notification_sent"] = True
                         sla["escalation_level"] = 1
@@ -2333,13 +2731,13 @@ def check_and_process_slas(now_utc: datetime):
                             last_esc_str = last_esc_str[:-1]
                         last_esc_dt = datetime.fromisoformat(last_esc_str)
                         
-                        settings = get_sla_settings()
+                        settings = get_sla_settings(tenant_id)
                         use_demo = settings.get("use_short_demo_durations", False)
                         esc_delay = timedelta(minutes=2) if use_demo else timedelta(hours=24)
                         
                         if now_utc >= last_esc_dt + esc_delay:
                             msg = build_notification_message(vio, "SLA_ESCALATED_L2")
-                            create_notification_event(vio["id"], "SLA_ESCALATED_L2", "Compliance Director", "compliance.director@company.com", msg, now_utc)
+                            create_notification_event(vio["id"], "SLA_ESCALATED_L2", "Compliance Director", "compliance.director@company.com", msg, now_utc, tenant_id)
                             
                             sla["escalation_level"] = 2
                             sla["last_escalated_at"] = now_utc.isoformat() + "Z"
@@ -2348,14 +2746,15 @@ def check_and_process_slas(now_utc: datetime):
             updated = True
             
     if updated:
-        with open(HISTORY_FILE, "w") as f:
+        filename = get_tenant_file(HISTORY_FILE, tenant_id)
+        with open(filename, "w") as f:
             json.dump(history, f, indent=4)
 
 
 
 @app.get("/api/violations/{violation_id}/sla")
 def get_violation_sla(violation_id: str, current_user: dict = Depends(get_current_user)):
-    violations_flat = get_all_violations_flat()
+    violations_flat = get_all_violations_flat(current_user["tenant_id"])
     target_vio = None
     for _, vio in violations_flat:
         if vio.get("id") == violation_id:
@@ -2376,7 +2775,7 @@ def get_violation_sla(violation_id: str, current_user: dict = Depends(get_curren
 
 @app.get("/api/violations/{violation_id}/escalations")
 def get_violation_escalations(violation_id: str, current_user: dict = Depends(get_current_user)):
-    notifs = get_notifications()
+    notifs = get_notifications(current_user["tenant_id"])
     vio_notifs = [n for n in notifs if n.get("violation_id") == violation_id]
     return sorted(vio_notifs, key=lambda x: x.get("created_at", ""))
 
@@ -2385,7 +2784,8 @@ def acknowledge_sla_violation(violation_id: str, current_user: dict = Depends(ge
     if current_user["role"] != "HR":
         raise HTTPException(status_code=403, detail="HR permissions required")
         
-    violations_flat = get_all_violations_flat()
+    tenant_id = current_user["tenant_id"]
+    violations_flat = get_all_violations_flat(tenant_id)
     target_vio = None
     for _, vio in violations_flat:
         if vio.get("id") == violation_id:
@@ -2403,14 +2803,15 @@ def acknowledge_sla_violation(violation_id: str, current_user: dict = Depends(ge
     sla["acknowledged_at"] = now_str
     sla["sla_status"] = "ON_TRACK"
     
-    update_violation_in_history(violation_id, target_vio)
+    update_violation_in_history(violation_id, target_vio, tenant_id)
     
     log_activity_event(
         violation_id=violation_id,
         actor_name=current_user["name"],
         actor_role=current_user["role"],
         action="SLA_ACKNOWLEDGED",
-        comment="SLA acknowledgment registered by HR."
+        comment="SLA acknowledgment registered by HR.",
+        tenant_id=tenant_id
     )
     
     return {"status": "success", "message": "Violation SLA acknowledged successfully.", "acknowledged_at": now_str}
@@ -2420,7 +2821,8 @@ def pause_sla(violation_id: str, current_user: dict = Depends(get_current_user))
     if current_user["role"] != "HR":
         raise HTTPException(status_code=403, detail="HR permissions required")
         
-    violations_flat = get_all_violations_flat()
+    tenant_id = current_user["tenant_id"]
+    violations_flat = get_all_violations_flat(tenant_id)
     target_vio = None
     for _, vio in violations_flat:
         if vio.get("id") == violation_id:
@@ -2438,14 +2840,15 @@ def pause_sla(violation_id: str, current_user: dict = Depends(get_current_user))
     sla["sla_status"] = "PAUSED"
     sla["paused_at"] = now_utc.isoformat() + "Z"
     
-    update_violation_in_history(violation_id, target_vio)
+    update_violation_in_history(violation_id, target_vio, tenant_id)
     
     log_activity_event(
         violation_id=violation_id,
         actor_name=current_user["name"],
         actor_role=current_user["role"],
         action="SLA_PAUSED",
-        comment="Remediation SLA paused by HR reviewer."
+        comment="Remediation SLA paused by HR reviewer.",
+        tenant_id=tenant_id
     )
     
     return {"status": "success", "message": "SLA paused."}
@@ -2455,7 +2858,8 @@ def resume_sla(violation_id: str, current_user: dict = Depends(get_current_user)
     if current_user["role"] != "HR":
         raise HTTPException(status_code=403, detail="HR permissions required")
         
-    violations_flat = get_all_violations_flat()
+    tenant_id = current_user["tenant_id"]
+    violations_flat = get_all_violations_flat(tenant_id)
     target_vio = None
     for _, vio in violations_flat:
         if vio.get("id") == violation_id:
@@ -2486,14 +2890,15 @@ def resume_sla(violation_id: str, current_user: dict = Depends(get_current_user)
     sla["sla_status"] = "ON_TRACK"
     sla["paused_at"] = None
     
-    update_violation_in_history(violation_id, target_vio)
+    update_violation_in_history(violation_id, target_vio, tenant_id)
     
     log_activity_event(
         violation_id=violation_id,
         actor_name=current_user["name"],
         actor_role=current_user["role"],
         action="SLA_RESUMED",
-        comment="Remediation SLA resumed. Deadlines adjusted accordingly."
+        comment="Remediation SLA resumed. Deadlines adjusted accordingly.",
+        tenant_id=tenant_id
     )
     
     return {"status": "success", "message": "SLA resumed."}
@@ -2503,7 +2908,8 @@ def manual_escalate(violation_id: str, req: ManualEscalateRequest, current_user:
     if current_user["role"] != "HR":
         raise HTTPException(status_code=403, detail="HR permissions required")
         
-    violations_flat = get_all_violations_flat()
+    tenant_id = current_user["tenant_id"]
+    violations_flat = get_all_violations_flat(tenant_id)
     target_vio = None
     for _, vio in violations_flat:
         if vio.get("id") == violation_id:
@@ -2523,7 +2929,7 @@ def manual_escalate(violation_id: str, req: ManualEscalateRequest, current_user:
     sla["last_escalated_at"] = now_utc.isoformat() + "Z"
     sla["sla_status"] = "ESCALATED"
     
-    update_violation_in_history(violation_id, target_vio)
+    update_violation_in_history(violation_id, target_vio, tenant_id)
     
     comment_text = req.comment or f"Manual escalation triggered to level {new_level} by compliance."
     
@@ -2531,14 +2937,15 @@ def manual_escalate(violation_id: str, req: ManualEscalateRequest, current_user:
     lead_email = target_vio.get("assigned_to", {}).get("department_lead_email", "lead@company.com")
     
     msg = f"MANUAL CRITICAL ESCALATION (Level {new_level}): Violation {violation_id} has been manually escalated by HR Reviewer. Review details: {comment_text}"
-    create_notification_event(violation_id, "MANUAL_ESCALATION", lead_name, lead_email, msg, now_utc)
+    create_notification_event(violation_id, "MANUAL_ESCALATION", lead_name, lead_email, msg, now_utc, tenant_id)
     
     log_activity_event(
         violation_id=violation_id,
         actor_name=current_user["name"],
         actor_role=current_user["role"],
         action="MANUAL_ESCALATION",
-        comment=comment_text
+        comment=comment_text,
+        tenant_id=tenant_id
     )
     
     return {"status": "success", "message": f"Violation escalated to Level {new_level}."}
@@ -2547,17 +2954,18 @@ def manual_escalate(violation_id: str, req: ManualEscalateRequest, current_user:
 def get_sla_settings_endpoint(current_user: dict = Depends(get_current_user)):
     if current_user["role"] != "HR":
         raise HTTPException(status_code=403, detail="HR permissions required")
-    return get_sla_settings()
+    return get_sla_settings(current_user["tenant_id"])
 
 @app.patch("/api/hr/sla-settings")
 def update_sla_settings_endpoint(settings_update: SLASettingsUpdate, current_user: dict = Depends(get_current_user)):
     if current_user["role"] != "HR":
         raise HTTPException(status_code=403, detail="HR permissions required")
         
+    tenant_id = current_user["tenant_id"]
     new_settings = settings_update.dict()
-    save_sla_settings(new_settings)
+    save_sla_settings(new_settings, tenant_id)
     
-    history = get_history()
+    history = get_history(tenant_id)
     now_utc = datetime.utcnow()
     
     for audit in history:
@@ -2565,12 +2973,13 @@ def update_sla_settings_endpoint(settings_update: SLASettingsUpdate, current_use
             if vio.get("status") == "RESOLVED":
                 continue
             if "sla" in vio:
-                ack_due, res_due = calculate_sla_deadlines(vio)
+                ack_due, res_due = calculate_sla_deadlines(vio, tenant_id=tenant_id)
                 vio["sla"]["acknowledgment_due_at"] = ack_due
                 vio["sla"]["resolution_due_at"] = res_due
                 vio["sla"] = calculate_sla_status_and_metrics(vio, now_utc)
                 
-    with open(HISTORY_FILE, "w") as f:
+    filename = get_tenant_file(HISTORY_FILE, tenant_id)
+    with open(filename, "w") as f:
         json.dump(history, f, indent=4)
         
     return new_settings
@@ -2580,11 +2989,11 @@ def run_sla_check_endpoint(current_user: dict = Depends(get_current_user)):
     if current_user["role"] != "HR":
         raise HTTPException(status_code=403, detail="HR permissions required")
     now_utc = datetime.utcnow()
-    check_and_process_slas(now_utc)
+    check_and_process_slas(now_utc, current_user["tenant_id"])
     return {"status": "success", "message": "Manual SLA evaluation checker run completed successfully."}
 
-def log_activity_event(violation_id: str, actor_name: str, actor_role: str, action: str, comment: str):
-    activity_file = "activity.json"
+def log_activity_event(violation_id: str, actor_name: str, actor_role: str, action: str, comment: str, tenant_id: str = "tenant-security-hq"):
+    activity_file = get_tenant_file("activity.json", tenant_id)
     activities = []
     if os.path.exists(activity_file):
         try:
@@ -2604,7 +3013,8 @@ def log_activity_event(violation_id: str, actor_name: str, actor_role: str, acti
         "new_status": "OPEN",
         "comment": comment,
         "evidence_url": None,
-        "created_at": datetime.utcnow().isoformat() + "Z"
+        "created_at": datetime.utcnow().isoformat() + "Z",
+        "tenant_id": tenant_id
     }
     activities.append(new_act)
     with open(activity_file, "w") as f:
