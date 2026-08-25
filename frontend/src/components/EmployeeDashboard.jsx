@@ -109,7 +109,10 @@ export default function EmployeeDashboard({ user, onLogout }) {
               <ShieldAlert className="w-6 h-6" />
             </div>
             <div>
-              <h2 className="text-base font-bold text-white tracking-tight">AI Compliance Portal</h2>
+              <div className="flex items-center gap-2">
+                <h2 className="text-base font-bold text-white tracking-tight">AI Compliance Portal</h2>
+                <span className="bg-amber-500/15 text-amber-400 text-[8px] px-1.5 py-0.5 rounded font-extrabold uppercase border border-amber-500/25 tracking-wider font-mono">Demo Environment</span>
+              </div>
               <span className="text-[10px] text-slate-500 font-semibold uppercase tracking-wider block">Employee Hub</span>
             </div>
           </div>
@@ -125,7 +128,7 @@ export default function EmployeeDashboard({ user, onLogout }) {
             <div className="hidden sm:flex items-center gap-2 px-3 py-1.5 rounded-xl bg-slate-900 border border-slate-800 text-xs font-semibold text-slate-300">
               <User className="w-3.5 h-3.5 text-indigo-400" />
               <span>{employeeEmail}</span>
-              <span className="text-[9px] bg-indigo-500/15 text-indigo-400 font-extrabold px-1.5 py-0.5 rounded border border-indigo-500/25 uppercase">Staff</span>
+              <span className="text-[9px] bg-indigo-500/15 text-indigo-400 font-extrabold px-1.5 py-0.5 rounded border border-indigo-500/25 uppercase">{user?.rawRole || user?.role || 'Employee'}</span>
             </div>
 
             {/* Logout button */}

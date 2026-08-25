@@ -216,3 +216,10 @@ __marimo__/
 
 # Streamlit
 .streamlit/secrets.toml
+
+# Compliance database files
+backend/*_technova-demo.json
+backend/*_aegispoint-demo.json
+backend/*_tenant-company-a.json
+backend/*_tenant-company-b.json
+backend/*_tenant-security-hq.json

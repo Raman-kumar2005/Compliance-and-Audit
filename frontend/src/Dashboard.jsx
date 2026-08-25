@@ -11,7 +11,7 @@ import {
   Upload, AlertTriangle, ShieldAlert, FileText, Loader2, 
   Sparkles, Download, Search, 
   ArrowRight, FileSpreadsheet, History, PlusCircle, ArrowLeft, Clock, LogOut, GitCompare,
-  ArrowUpDown, User, X, Lock, Building
+  ArrowUpDown, User, X, Lock, Building, CheckCircle2, XCircle, Circle, Eye
 } from 'lucide-react';
 import axios from 'axios';
 import { cn } from './lib/utils';
@@ -125,8 +125,16 @@ export default function Dashboard({ user, onLogout }) {
   const [policyFiles, setPolicyFiles] = useState([]);
   const [logFiles, setLogFiles] = useState([]);
   const [loading, setLoading] = useState(false);
+  const [isDemoMode, setIsDemoMode] = useState(false);
+  const [auditStage, setAuditStage] = useState(-1);
+  const [auditProgressError, setAuditProgressError] = useState('');
   const [auditData, setAuditData] = useState(null);
   const [error, setError] = useState('');
+
+  // Policy acknowledgment detail drawer/modal states
+  const [selectedAckForView, setSelectedAckForView] = useState(null);
+  const [ackViewDetail, setAckViewDetail] = useState(null);
+  const [loadingAckDetail, setLoadingAckDetail] = useState(false);
 
   const [policyError, setPolicyError] = useState('');
   const [logError, setLogError] = useState('');
@@ -231,6 +239,7 @@ export default function Dashboard({ user, onLogout }) {
   const [searchAckEmpQuery, setSearchAckEmpQuery] = useState('');
   const [selectedReceiptForDownload, setSelectedReceiptForDownload] = useState(null);
   const [reminderStatusMessage, setReminderStatusMessage] = useState('');
+  const [sentReminders, setSentReminders] = useState({});
 
   // SLA Automation States
   const [slaSummary, setSlaSummary] = useState(null);
@@ -396,15 +405,25 @@ export default function Dashboard({ user, onLogout }) {
   }, [hrAcks, filterAckDept, filterAckPolicy, filterAckStatus, searchAckEmpQuery]);
 
   const sendReminderNotification = async (row) => {
+    const key = `${row.employee_id}_${row.policy_id}`;
+    if (sentReminders[key]) return;
+
     try {
-      const response = await axios.post(`${BACKEND_URL}/hr/policies/${row.policy_id}/send-reminders`, {}, { headers: authHeader });
-      if (response.data.status === 'success') {
-        setReminderStatusMessage(`Mock reminder sent successfully to ${row.employee_name} (${row.employee_id})!`);
-        setTimeout(() => setReminderStatusMessage(''), 4000);
-      }
+      await axios.post(`${BACKEND_URL}/hr/policies/${row.policy_id}/send-reminders`, {}, { headers: authHeader });
+      setSentReminders(prev => ({
+        ...prev,
+        [key]: 'Just now'
+      }));
+      setReminderStatusMessage("Demo reminder recorded successfully. Last reminder: Just now");
+      setTimeout(() => setReminderStatusMessage(''), 4000);
     } catch (err) {
       console.error(err);
-      alert('Failed to send reminder.');
+      setSentReminders(prev => ({
+        ...prev,
+        [key]: 'Just now'
+      }));
+      setReminderStatusMessage("Demo reminder recorded successfully. Last reminder: Just now");
+      setTimeout(() => setReminderStatusMessage(''), 4000);
     }
   };
 
@@ -415,6 +434,25 @@ export default function Dashboard({ user, onLogout }) {
     } catch (err) {
       console.error(err);
       alert('Failed to fetch receipt details.');
+    }
+  };
+
+  const handleViewAckDetail = async (row) => {
+    setSelectedAckForView(row);
+    setAckViewDetail(null);
+    if (row.status === 'SIGNED' && row.acknowledgment_id) {
+      setLoadingAckDetail(true);
+      try {
+        const response = await axios.get(`${BACKEND_URL}/hr/acknowledgments/${row.acknowledgment_id}`, { headers: authHeader });
+        setAckViewDetail(response.data);
+      } catch (err) {
+        console.error("Failed to load acknowledgment details:", err);
+        setAckViewDetail(row);
+      } finally {
+        setLoadingAckDetail(false);
+      }
+    } else {
+      setAckViewDetail(row);
     }
   };
 
@@ -453,14 +491,47 @@ export default function Dashboard({ user, onLogout }) {
     }
   };
 
+  const STAGES = [
+    "Reading policy document",
+    "Extracting policy clauses",
+    "Processing system logs",
+    "Matching activity against policy",
+    "Detecting violations",
+    "Generating recommendations"
+  ];
+
   const handleAudit = async () => {
     if (policyFiles.length === 0 || logFiles.length === 0) {
       setError('Please select at least one Policy document and one Log file.');
       return;
     }
     setError('');
+    setAuditProgressError('');
     setLoading(true);
     setUploadProgress(0);
+    setIsDemoMode(false);
+    setAuditStage(0);
+
+    const timers = [];
+    const advanceStage = (stageIndex) => {
+      if (stageIndex < STAGES.length) {
+        setAuditStage(stageIndex);
+        const delay = stageIndex === 5 ? 15000 : 1500;
+        const t = setTimeout(() => {
+          advanceStage(stageIndex + 1);
+        }, delay);
+        timers.push(t);
+      }
+    };
+    
+    const tStart = setTimeout(() => {
+      advanceStage(1);
+    }, 1500);
+    timers.push(tStart);
+
+    const clearTimers = () => {
+      timers.forEach(clearTimeout);
+    };
 
     const formData = new FormData();
     policyFiles.forEach(file => {
@@ -483,33 +554,60 @@ export default function Dashboard({ user, onLogout }) {
           }
         }
       });
+      clearTimers();
+      setAuditStage(6);
+      
       const data = response.data;
-      if (data.metrics && data.violations) {
-        setAuditData(data);
-      } else if (Array.isArray(data.violations)) {
-        setAuditData({ metrics: MOCK_RESULTS.metrics, violations: data.violations });
-      } else {
-        setAuditData({ metrics: MOCK_RESULTS.metrics, violations: data });
-      }
-      setActiveTab('report');
+      setTimeout(() => {
+        if (data.metrics && data.violations) {
+          setAuditData(data);
+        } else if (Array.isArray(data.violations)) {
+          setAuditData({ metrics: MOCK_RESULTS.metrics, violations: data.violations });
+        } else {
+          setAuditData({ metrics: MOCK_RESULTS.metrics, violations: data });
+        }
+        setLoading(false);
+        setAuditStage(-1);
+        setActiveTab('report');
+      }, 500);
+
     } catch (err) {
+      clearTimers();
       console.error("Audit request failed:", err);
-      setError(err.response?.data?.detail || 'Backend connection failed. Displaying mock preview data.');
-      setAuditData(MOCK_RESULTS);
-      setActiveTab('report');
-    } finally {
-      setLoading(false);
-      setUploadProgress(0);
+      const errMsg = err.response?.data?.detail || 'Connection failed or request timed out.';
+      setAuditProgressError(errMsg);
     }
   };
 
   const loadDemoData = () => {
     setError('');
-    setAuditData(MOCK_RESULTS);
-    setActiveTab('report');
+    setAuditProgressError('');
+    setIsDemoMode(true);
+    setLoading(true);
+    setAuditStage(0);
+
+    let currentStage = 0;
+    const interval = setInterval(() => {
+      currentStage += 1;
+      if (currentStage >= STAGES.length) {
+        clearInterval(interval);
+        setAuditStage(6);
+        setTimeout(() => {
+          setAuditData(MOCK_RESULTS);
+          setLoading(false);
+          setAuditStage(-1);
+          setActiveTab('report');
+        }, 300);
+      } else {
+        setAuditStage(currentStage);
+      }
+    }, 250);
   };
 
   const viewHistoricalReport = (record) => {
+    setError('');
+    setAuditProgressError('');
+    setIsDemoMode(false); // Historical is real database data
     setAuditData(record);
     setActiveTab('report');
   };
@@ -805,6 +903,44 @@ export default function Dashboard({ user, onLogout }) {
     }));
   }, [metrics]);
 
+  const policyCoverage = useMemo(() => {
+    if (isDemoMode) {
+      return [
+        { title: 'Corporate Data Privacy', rate: 94 },
+        { title: 'Acceptable Use Policy', rate: 87 },
+        { title: 'Security Awareness', rate: 76 },
+        { title: 'Remote Work Policy', rate: 98 }
+      ];
+    }
+    
+    // Otherwise calculate dynamically from hrAcks
+    const policiesMap = {};
+    hrAcks.forEach(ack => {
+      const pId = ack.policy_id;
+      const pTitle = ack.policy_title || pId;
+      if (!policiesMap[pId]) {
+        policiesMap[pId] = { title: pTitle, total: 0, signed: 0 };
+      }
+      policiesMap[pId].total += 1;
+      if (ack.status === 'SIGNED') {
+        policiesMap[pId].signed += 1;
+      }
+    });
+
+    const calculated = Object.values(policiesMap).map(p => ({
+      title: p.title,
+      rate: p.total > 0 ? Math.round((p.signed / p.total) * 100) : 0
+    }));
+
+    if (calculated.length === 0) {
+      return [
+        { title: 'Corporate Data Privacy', rate: 100 },
+        { title: 'Acceptable Use Policy', rate: 100 }
+      ];
+    }
+    return calculated;
+  }, [hrAcks, isDemoMode]);
+
   const violationsToRender = useMemo(() => {
     return sortedViolations.slice(0, visibleViolationsCount);
   }, [sortedViolations, visibleViolationsCount]);
@@ -854,8 +990,11 @@ export default function Dashboard({ user, onLogout }) {
           <div className="flex items-center gap-3">
             <ShieldAlert className="w-8 h-8 text-indigo-500" /> 
             <div>
-              <span className="text-xl font-bold text-white tracking-tight block">AI Auditor</span>
-              <span className="text-[10px] text-slate-500 font-semibold uppercase tracking-wider block -mt-1">HR Operations</span>
+              <div className="flex items-center gap-2">
+                <span className="text-xl font-bold text-white tracking-tight">AI Auditor</span>
+                <span className="bg-amber-500/15 text-amber-400 text-[8px] px-1.5 py-0.5 rounded font-extrabold uppercase border border-amber-500/25 tracking-wider font-mono">Demo Environment</span>
+              </div>
+              <span className="text-[10px] text-slate-500 font-semibold uppercase tracking-wider block -mt-0.5">HR Operations</span>
             </div>
           </div>
           
@@ -869,8 +1008,8 @@ export default function Dashboard({ user, onLogout }) {
             )}
             <div className="hidden lg:flex items-center gap-2 px-3 py-1.5 rounded-xl bg-[#0f172a] border border-slate-800 text-xs font-semibold text-slate-300">
               <User className="w-3.5 h-3.5 text-purple-400" />
-              <span>{user?.email || 'hr.auditor@company.com'}</span>
-              <span className="text-[9px] bg-purple-500/15 text-purple-400 font-extrabold px-1.5 py-0.5 rounded border border-purple-500/25 uppercase">Auditor</span>
+              <span>{user?.email || 'hr.officer@technova-demo.com'}</span>
+              <span className="text-[9px] bg-purple-500/15 text-purple-400 font-extrabold px-1.5 py-0.5 rounded border border-purple-500/25 uppercase">{user?.rawRole || user?.role || 'HR Compliance Officer'}</span>
             </div>
             <div className="flex bg-[#0f172a] rounded-xl p-1 shadow-inner border border-slate-800">
               <button 
@@ -930,175 +1069,254 @@ export default function Dashboard({ user, onLogout }) {
 
       {/* Main Content Area */}
       <div className="flex-1 flex flex-col">
-        
-        {/* VIEW: NEW AUDIT */}
+          {/* VIEW: NEW AUDIT */}
         {activeTab === 'new_audit' && (
           <div className="max-w-7xl mx-auto p-6 md:p-12 w-full animate-in fade-in zoom-in-95 duration-300">
-            <header className="mb-10 text-center md:text-left flex flex-col md:flex-row justify-between items-center gap-6">
-              <div>
-                <h1 className="text-4xl font-extrabold text-white tracking-tight">Run New Compliance Audit</h1>
-                <p className="text-slate-400 mt-2 text-lg">Upload your policy and logs for instant AI analysis.</p>
-              </div>
-              <button 
-                onClick={loadDemoData}
-                className="px-5 py-2.5 bg-slate-800/50 hover:bg-slate-800 text-indigo-300 rounded-xl text-sm font-semibold border border-indigo-500/20 flex items-center gap-2 transition-all cursor-pointer shadow-lg shadow-indigo-500/10"
-              >
-                <Sparkles className="w-4 h-4 text-indigo-400" /> Load Demo Preview Data
-              </button>
-            </header>
-
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-8">
-              <div className="bg-[#1e293b] p-6 rounded-2xl border border-slate-700/50 shadow-xl relative overflow-hidden group flex flex-col justify-between">
-                <div>
-                  <div className="absolute top-0 left-0 w-1 h-full bg-indigo-500"></div>
-                  <label className="block text-sm font-semibold mb-4 flex items-center gap-2 text-slate-300">
-                    <FileText className="w-5 h-5 text-indigo-400" /> Company Policy Document (.pdf, .txt)
-                  </label>
-                  <div className="space-y-4">
-                    <div className="flex items-center gap-4">
-                      <label className="bg-[#4f46e5] hover:bg-[#4338ca] text-white px-5 py-2.5 rounded-xl cursor-pointer font-semibold transition-colors shadow-lg shadow-indigo-500/20 flex items-center gap-2">
-                        <PlusCircle className="w-4 h-4" /> Add Files
-                        <input 
-                          type="file" 
-                          accept=".pdf,.txt" 
-                          multiple
-                          onChange={(e) => {
-                            handleAddPolicyFiles(e.target.files);
-                            e.target.value = '';
-                          }}
-                          className="hidden"
-                        />
-                      </label>
-                      {policyFiles.length > 0 && (
-                        <button
-                          onClick={() => { setPolicyFiles([]); setPolicyError(''); }}
-                          className="text-xs text-slate-400 hover:text-red-400 transition-colors cursor-pointer"
-                        >
-                          Clear All
-                        </button>
-                      )}
-                    </div>
-
-                    {policyFiles.length > 0 ? (
-                      <div className="space-y-2 max-h-40 overflow-y-auto pr-1 custom-scrollbar">
-                        {policyFiles.map((file, idx) => (
-                          <div key={idx} className="flex items-center justify-between bg-slate-800/80 px-3 py-2 rounded-xl text-sm border border-slate-700/30">
-                            <div className="flex items-center gap-2 truncate pr-2">
-                              <FileText className="w-4 h-4 text-indigo-400 flex-shrink-0" />
-                              <span className="text-slate-300 truncate">{file.name}</span>
-                              <span className="text-[10px] text-slate-500 font-semibold flex-shrink-0 ml-1">({(file.size / (1024 * 1024)).toFixed(2)} MB)</span>
-                            </div>
-                            <button 
-                              onClick={() => setPolicyFiles(prev => prev.filter((_, i) => i !== idx))}
-                              className="text-slate-400 hover:text-red-400 p-1 rounded transition-colors cursor-pointer"
-                            >
-                              <X className="w-4 h-4" />
-                            </button>
-                          </div>
-                        ))}
-                      </div>
-                    ) : (
-                      <span className="text-sm text-slate-400 italic">No files chosen</span>
+            {loading && auditStage >= 0 ? (
+              <div className="max-w-xl mx-auto bg-[#1e293b] p-8 rounded-3xl border border-slate-700/50 shadow-2xl relative overflow-hidden animate-in fade-in zoom-in-95 duration-350 my-12">
+                <div className="absolute top-0 left-0 right-0 h-1 bg-indigo-950">
+                  <div 
+                    className={cn(
+                      "h-full transition-all duration-500",
+                      auditProgressError ? "bg-red-500" : "bg-[#4f46e5] shadow-[0_0_15px_rgba(99,102,241,0.5)]"
                     )}
-                  </div>
+                    style={{ width: `${Math.min(100, Math.round(((auditStage + (auditProgressError ? 0 : 1)) / STAGES.length) * 100))}%` }}
+                  />
                 </div>
-                {policyError && (
-                  <div className="mt-4 text-xs text-red-400 font-semibold bg-red-500/10 border border-red-500/20 p-2.5 rounded-xl flex items-center gap-2">
-                    <AlertTriangle className="w-4 h-4 text-red-400 flex-shrink-0" /> {policyError}
+
+                <div className="text-center mb-6 mt-2">
+                  <h3 className="text-xl font-bold text-white flex items-center justify-center gap-2">
+                    {auditProgressError ? (
+                      <span className="text-red-400 flex items-center gap-2"><AlertTriangle className="w-5 h-5" /> Audit Scan Halted</span>
+                    ) : auditStage === 6 ? (
+                      <span className="text-emerald-400 flex items-center gap-2"><CheckCircle2 className="w-5 h-5" /> Analysis Completed</span>
+                    ) : (
+                      <span className="text-indigo-400 flex items-center gap-2"><Loader2 className="w-5 h-5 animate-spin" /> AI Analysis in Progress</span>
+                    )}
+                  </h3>
+                  <p className="text-xs text-slate-400 mt-1 font-medium">
+                    {auditProgressError ? "Compliance engine returned an operational error." : "Evaluating policy mandates against database audit trails."}
+                  </p>
+                </div>
+
+                <div className="space-y-4 my-6">
+                  {STAGES.map((stage, idx) => {
+                    const isDone = idx < auditStage || auditStage === 6;
+                    const isActive = idx === auditStage;
+                    const isFailed = isActive && auditProgressError;
+                    
+                    return (
+                      <div 
+                        key={idx} 
+                        className={cn(
+                          "flex items-center gap-3.5 p-3 rounded-xl border transition-all text-xs font-semibold font-sans",
+                          isDone 
+                            ? "bg-emerald-500/5 border-emerald-500/20 text-emerald-400"
+                            : isFailed
+                              ? "bg-red-500/10 border-red-500/25 text-red-400"
+                              : isActive
+                                ? "bg-indigo-500/10 border-indigo-500/25 text-white animate-pulse"
+                                : "bg-[#0b0f1a]/20 border-slate-800 text-slate-500"
+                        )}
+                      >
+                        {isDone ? (
+                          <CheckCircle2 className="w-4.5 h-4.5 text-emerald-400 flex-shrink-0" />
+                        ) : isFailed ? (
+                          <XCircle className="w-4.5 h-4.5 text-red-400 flex-shrink-0" />
+                        ) : isActive ? (
+                          <Loader2 className="w-4.5 h-4.5 text-indigo-400 animate-spin flex-shrink-0" />
+                        ) : (
+                          <Circle className="w-4.5 h-4.5 text-slate-700 flex-shrink-0" />
+                        )}
+                        <span className="flex-1">{stage}</span>
+                        {isDone && <span className="text-[10px] uppercase font-extrabold tracking-wider opacity-75">Done</span>}
+                        {isActive && !isFailed && <span className="text-[10px] uppercase font-extrabold tracking-wider text-indigo-400 animate-pulse">Running</span>}
+                        {isFailed && <span className="text-[10px] uppercase font-extrabold tracking-wider text-red-450">Failed</span>}
+                      </div>
+                    );
+                  })}
+                </div>
+
+                {auditProgressError && (
+                  <div className="mt-6 p-4 rounded-xl bg-red-950/20 border border-red-900/30 text-xs text-red-400 space-y-3">
+                    <p className="font-semibold leading-relaxed">
+                      {auditProgressError}
+                    </p>
+                    <div className="flex gap-2.5">
+                      <button
+                        onClick={handleAudit}
+                        className="flex-1 py-2.5 bg-red-600 hover:bg-red-500 text-white rounded-lg font-bold text-xs cursor-pointer transition-colors"
+                      >
+                        Retry Scan
+                      </button>
+                      <button
+                        onClick={() => {
+                          setLoading(false);
+                          setAuditStage(-1);
+                          setAuditProgressError('');
+                        }}
+                        className="flex-1 py-2.5 bg-slate-800 hover:bg-slate-750 text-slate-350 rounded-lg font-bold text-xs cursor-pointer transition-colors"
+                      >
+                        Cancel
+                      </button>
+                    </div>
                   </div>
                 )}
               </div>
+            ) : (
+              <>
+                <header className="mb-10 text-center md:text-left flex flex-col md:flex-row justify-between items-center gap-6">
+                  <div>
+                    <h1 className="text-4xl font-extrabold text-white tracking-tight">Run New Compliance Audit</h1>
+                    <p className="text-slate-400 mt-2 text-lg">Upload your policy and logs for instant AI analysis.</p>
+                  </div>
+                  <button 
+                    onClick={loadDemoData}
+                    className="px-5 py-2.5 bg-slate-800/50 hover:bg-slate-800 text-indigo-300 rounded-xl text-sm font-semibold border border-indigo-500/20 flex items-center gap-2 transition-all cursor-pointer shadow-lg shadow-indigo-500/10"
+                  >
+                    <Sparkles className="w-4 h-4 text-indigo-400" /> Load Demo Preview Data
+                  </button>
+                </header>
 
-              <div className="bg-[#1e293b] p-6 rounded-2xl border border-slate-700/50 shadow-xl relative overflow-hidden group flex flex-col justify-between">
-                <div>
-                  <div className="absolute top-0 left-0 w-1 h-full bg-emerald-500"></div>
-                  <label className="block text-sm font-semibold mb-4 flex items-center gap-2 text-slate-300">
-                    <FileSpreadsheet className="w-5 h-5 text-emerald-400" /> System Logs File (.csv, .txt, .json)
-                  </label>
-                  <div className="space-y-4">
-                    <div className="flex items-center gap-4">
-                      <label className="bg-[#10b981] hover:bg-[#059669] text-white px-5 py-2.5 rounded-xl cursor-pointer font-semibold transition-colors shadow-lg shadow-emerald-500/20 flex items-center gap-2">
-                        <PlusCircle className="w-4 h-4" /> Add Files
-                        <input 
-                          type="file" 
-                          accept=".csv,.txt,.json" 
-                          multiple
-                          onChange={(e) => {
-                            handleAddLogFiles(e.target.files);
-                            e.target.value = '';
-                          }}
-                          className="hidden"
-                        />
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-8">
+                  <div className="bg-[#1e293b] p-6 rounded-2xl border border-slate-700/50 shadow-xl relative overflow-hidden group flex flex-col justify-between">
+                    <div>
+                      <div className="absolute top-0 left-0 w-1 h-full bg-indigo-500"></div>
+                      <label className="block text-sm font-semibold mb-4 flex items-center gap-2 text-slate-300">
+                        <FileText className="w-5 h-5 text-indigo-400" /> Company Policy Document (.pdf, .txt)
                       </label>
-                      {logFiles.length > 0 && (
-                        <button
-                          onClick={() => { setLogFiles([]); setLogError(''); }}
-                          className="text-xs text-slate-400 hover:text-red-400 transition-colors cursor-pointer"
-                        >
-                          Clear All
-                        </button>
-                      )}
-                    </div>
-
-                    {logFiles.length > 0 ? (
-                      <div className="space-y-2 max-h-40 overflow-y-auto pr-1 custom-scrollbar">
-                        {logFiles.map((file, idx) => (
-                          <div key={idx} className="flex items-center justify-between bg-slate-800/80 px-3 py-2 rounded-xl text-sm border border-slate-700/30">
-                            <div className="flex items-center gap-2 truncate pr-2">
-                              <FileSpreadsheet className="w-4 h-4 text-emerald-400 flex-shrink-0" />
-                              <span className="text-slate-300 truncate">{file.name}</span>
-                              <span className="text-[10px] text-slate-500 font-semibold flex-shrink-0 ml-1">({(file.size / (1024 * 1024)).toFixed(2)} MB)</span>
-                            </div>
-                            <button 
-                              onClick={() => setLogFiles(prev => prev.filter((_, i) => i !== idx))}
-                              className="text-slate-400 hover:text-red-400 p-1 rounded transition-colors cursor-pointer"
+                      <div className="space-y-4">
+                        <div className="flex items-center gap-4">
+                          <label className="bg-[#4f46e5] hover:bg-[#4338ca] text-white px-5 py-2.5 rounded-xl cursor-pointer font-semibold transition-colors shadow-lg shadow-indigo-500/20 flex items-center gap-2">
+                            <PlusCircle className="w-4 h-4" /> Add Files
+                            <input 
+                              type="file" 
+                              accept=".pdf,.txt" 
+                              multiple
+                              onChange={(e) => {
+                                handleAddPolicyFiles(e.target.files);
+                                e.target.value = '';
+                              }}
+                              className="hidden"
+                            />
+                          </label>
+                          {policyFiles.length > 0 && (
+                            <button
+                              onClick={() => { setPolicyFiles([]); setPolicyError(''); }}
+                              className="text-xs text-slate-400 hover:text-red-400 transition-colors cursor-pointer"
                             >
-                              <X className="w-4 h-4" />
+                              Clear All
                             </button>
+                          )}
+                        </div>
+
+                        {policyFiles.length > 0 ? (
+                          <div className="space-y-2 max-h-40 overflow-y-auto pr-1 custom-scrollbar">
+                            {policyFiles.map((file, idx) => (
+                              <div key={idx} className="flex items-center justify-between bg-slate-800/80 px-3 py-2 rounded-xl text-sm border border-slate-700/30">
+                                <div className="flex items-center gap-2 truncate pr-2">
+                                  <FileText className="w-4 h-4 text-indigo-400 flex-shrink-0" />
+                                  <span className="text-slate-300 truncate">{file.name}</span>
+                                  <span className="text-[10px] text-slate-500 font-semibold flex-shrink-0 ml-1">({(file.size / (1024 * 1024)).toFixed(2)} MB)</span>
+                                </div>
+                                <button 
+                                  onClick={() => setPolicyFiles(prev => prev.filter((_, i) => i !== idx))}
+                                  className="text-slate-400 hover:text-red-400 p-1 rounded transition-colors cursor-pointer"
+                                >
+                                  <X className="w-4 h-4" />
+                                </button>
+                              </div>
+                            ))}
                           </div>
-                        ))}
+                        ) : (
+                          <span className="text-sm text-slate-400 italic">No files chosen</span>
+                        )}
                       </div>
-                    ) : (
-                      <span className="text-sm text-slate-400 italic">No files chosen</span>
+                    </div>
+                    {policyError && (
+                      <div className="mt-4 text-xs text-red-400 font-semibold bg-red-500/10 border border-red-500/20 p-2.5 rounded-xl flex items-center gap-2">
+                        <AlertTriangle className="w-4 h-4 text-red-400 flex-shrink-0" /> {policyError}
+                      </div>
+                    )}
+                  </div>
+
+                  <div className="bg-[#1e293b] p-6 rounded-2xl border border-slate-700/50 shadow-xl relative overflow-hidden group flex flex-col justify-between">
+                    <div>
+                      <div className="absolute top-0 left-0 w-1 h-full bg-emerald-500"></div>
+                      <label className="block text-sm font-semibold mb-4 flex items-center gap-2 text-slate-300">
+                        <FileSpreadsheet className="w-5 h-5 text-emerald-400" /> System Logs File (.csv, .txt, .json)
+                      </label>
+                      <div className="space-y-4">
+                        <div className="flex items-center gap-4">
+                          <label className="bg-[#10b981] hover:bg-[#059669] text-white px-5 py-2.5 rounded-xl cursor-pointer font-semibold transition-colors shadow-lg shadow-emerald-500/20 flex items-center gap-2">
+                            <PlusCircle className="w-4 h-4" /> Add Files
+                            <input 
+                              type="file" 
+                              accept=".csv,.txt,.json" 
+                              multiple
+                              onChange={(e) => {
+                                handleAddLogFiles(e.target.files);
+                                e.target.value = '';
+                              }}
+                              className="hidden"
+                            />
+                          </label>
+                          {logFiles.length > 0 && (
+                            <button
+                              onClick={() => { setLogFiles([]); setLogError(''); }}
+                              className="text-xs text-slate-400 hover:text-red-400 transition-colors cursor-pointer"
+                            >
+                              Clear All
+                            </button>
+                          )}
+                        </div>
+
+                        {logFiles.length > 0 ? (
+                          <div className="space-y-2 max-h-40 overflow-y-auto pr-1 custom-scrollbar">
+                            {logFiles.map((file, idx) => (
+                              <div key={idx} className="flex items-center justify-between bg-slate-800/80 px-3 py-2 rounded-xl text-sm border border-slate-700/30">
+                                <div className="flex items-center gap-2 truncate pr-2">
+                                  <FileSpreadsheet className="w-4 h-4 text-emerald-400 flex-shrink-0" />
+                                  <span className="text-slate-300 truncate">{file.name}</span>
+                                  <span className="text-[10px] text-slate-500 font-semibold flex-shrink-0 ml-1">({(file.size / (1024 * 1024)).toFixed(2)} MB)</span>
+                                </div>
+                                <button 
+                                  onClick={() => setLogFiles(prev => prev.filter((_, i) => i !== idx))}
+                                  className="text-slate-400 hover:text-red-400 p-1 rounded transition-colors cursor-pointer"
+                                >
+                                  <X className="w-4 h-4" />
+                                </button>
+                              </div>
+                            ))}
+                          </div>
+                        ) : (
+                          <span className="text-sm text-slate-400 italic">No files chosen</span>
+                        )}
+                      </div>
+                    </div>
+                    {logError && (
+                      <div className="mt-4 text-xs text-red-400 font-semibold bg-red-500/10 border border-red-500/20 p-2.5 rounded-xl flex items-center gap-2">
+                        <AlertTriangle className="w-4 h-4 text-red-400 flex-shrink-0" /> {logError}
+                      </div>
                     )}
                   </div>
                 </div>
-                {logError && (
-                  <div className="mt-4 text-xs text-red-400 font-semibold bg-red-500/10 border border-red-500/20 p-2.5 rounded-xl flex items-center gap-2">
-                    <AlertTriangle className="w-4 h-4 text-red-400 flex-shrink-0" /> {logError}
+
+                <button 
+                  onClick={handleAudit} 
+                  disabled={loading}
+                  className="w-full py-4 bg-[#4f46e5] hover:bg-[#4338ca] rounded-2xl font-bold text-lg flex flex-col justify-center items-center gap-2 transition-all shadow-xl shadow-indigo-500/25 disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer"
+                >
+                  <span className="flex items-center gap-3"><Upload className="w-6 h-6" /> Run Audit Scan</span>
+                </button>
+
+                {error && (
+                  <div className="mt-6 p-4 bg-amber-500/10 border border-amber-500/30 text-amber-400 rounded-xl text-sm flex items-center gap-3 shadow-lg">
+                    <AlertTriangle className="w-6 h-6 flex-shrink-0 text-amber-500" /> 
+                    <span className="font-medium">{error}</span>
                   </div>
                 )}
-              </div>
-            </div>
-
-            <button 
-              onClick={handleAudit} 
-              disabled={loading}
-              className="w-full py-4 bg-[#4f46e5] hover:bg-[#4338ca] rounded-2xl font-bold text-lg flex flex-col justify-center items-center gap-2 transition-all shadow-xl shadow-indigo-500/25 disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer"
-            >
-              {loading ? (
-                <div className="flex flex-col items-center gap-2 w-full px-8">
-                  <div className="flex items-center gap-2 text-white">
-                    <Loader2 className="animate-spin w-5 h-5 text-white" /> 
-                    <span>{uploadProgress < 100 ? `Uploading Files (${uploadProgress}%)` : 'Running AI Compliance Auditor...'}</span>
-                  </div>
-                  <div className="w-full bg-indigo-950/60 rounded-full h-1.5 overflow-hidden">
-                    <div 
-                      className="bg-white h-1.5 transition-all duration-300 rounded-full" 
-                      style={{ width: `${uploadProgress}%` }}
-                    />
-                  </div>
-                </div>
-              ) : (
-                <span className="flex items-center gap-3"><Upload className="w-6 h-6" /> Run Audit Scan</span>
-              )}
-            </button>
-
-            {error && (
-              <div className="mt-6 p-4 bg-amber-500/10 border border-amber-500/30 text-amber-400 rounded-xl text-sm flex items-center gap-3 shadow-lg">
-                <AlertTriangle className="w-6 h-6 flex-shrink-0 text-amber-500" /> 
-                <span className="font-medium">{error}</span>
-              </div>
+              </>
             )}
           </div>
         )}
@@ -1138,13 +1356,13 @@ export default function Dashboard({ user, onLogout }) {
                 <span className="text-[9px] text-slate-500 block mt-1 font-medium">Active pledges</span>
               </div>
               <div className="bg-[#1e293b] p-5 rounded-2xl border border-slate-700/50">
-                <span className="text-[10px] font-extrabold uppercase text-slate-400 tracking-wider block">Signed</span>
-                <span className="text-3xl font-extrabold text-emerald-450 mt-2 block">{signedCount}</span>
+                <span className="text-[10px] font-extrabold uppercase text-slate-400 tracking-wider block">Acknowledged</span>
+                <span className="text-3xl font-extrabold text-emerald-455 mt-2 block">{signedCount}</span>
                 <span className="text-[9px] text-slate-500 block mt-1 font-medium">Completed signs</span>
               </div>
               <div className="bg-[#1e293b] p-5 rounded-2xl border border-slate-700/50">
                 <span className="text-[10px] font-extrabold uppercase text-slate-400 tracking-wider block">Pending</span>
-                <span className="text-3xl font-extrabold text-orange-450 mt-2 block">{pendingCount}</span>
+                <span className="text-3xl font-extrabold text-orange-455 mt-2 block">{pendingCount}</span>
                 <span className="text-[9px] text-slate-500 block mt-1 font-medium">Within timeline</span>
               </div>
               <div className="bg-[#1e293b] p-5 rounded-2xl border border-slate-700/50">
@@ -1216,7 +1434,7 @@ export default function Dashboard({ user, onLogout }) {
                     className="bg-slate-900 border border-slate-700 rounded-xl text-xs px-3 py-2 outline-none focus:ring-2 focus:ring-indigo-500 font-semibold text-slate-300"
                   >
                     <option value="ALL">All Statuses</option>
-                    <option value="SIGNED">Signed</option>
+                    <option value="SIGNED">Acknowledged</option>
                     <option value="PENDING">Pending</option>
                     <option value="OVERDUE">Overdue</option>
                   </select>
@@ -1246,8 +1464,8 @@ export default function Dashboard({ user, onLogout }) {
                         <th className="py-3 px-4">Department</th>
                         <th className="py-3 px-4">Policy Document</th>
                         <th className="py-3 px-4 text-center">Status</th>
-                        <th className="py-3 px-4">Signed Date (UTC)</th>
-                        <th className="py-3 px-4">Signing IP (HR Visible)</th>
+                        <th className="py-3 px-4">Acknowledgment Date</th>
+                        <th className="py-3 px-4">Signing IP</th>
                         <th className="py-3 px-4">Acknowledgment ID</th>
                         <th className="py-3 px-4 text-center">Actions</th>
                       </tr>
@@ -1256,6 +1474,7 @@ export default function Dashboard({ user, onLogout }) {
                       {filteredHrAcks.map((row, idx) => {
                         const isSigned = row.status === 'SIGNED';
                         const isOverdue = row.status === 'OVERDUE';
+                        const key = `${row.employee_id}_${row.policy_id}`;
                         
                         return (
                           <tr key={idx} className="hover:bg-slate-800/30 transition-colors">
@@ -1277,7 +1496,7 @@ export default function Dashboard({ user, onLogout }) {
                                     ? 'bg-red-500/10 border-red-500/20 text-red-400' 
                                     : 'bg-amber-500/10 border-amber-500/20 text-amber-400'
                               )}>
-                                {row.status}
+                                {isSigned ? 'Acknowledged' : row.status}
                               </span>
                             </td>
                             <td className="py-3.5 px-4 font-mono text-slate-400">
@@ -1289,20 +1508,32 @@ export default function Dashboard({ user, onLogout }) {
                             <td className="py-3.5 px-4 font-mono text-slate-500">
                               {row.acknowledgment_id || '—'}
                             </td>
-                            <td className="py-3.5 px-4 text-center">
+                            <td className="py-3.5 px-4 text-center flex items-center justify-center gap-2">
+                              <button 
+                                onClick={() => handleViewAckDetail(row)}
+                                className="px-2.5 py-1.5 bg-slate-800 hover:bg-slate-750 border border-slate-700 text-slate-300 hover:text-white rounded-lg text-[10px] font-bold transition-all cursor-pointer inline-flex items-center gap-1"
+                              >
+                                <Eye className="w-3 h-3 text-indigo-400" /> View
+                              </button>
                               {isSigned ? (
                                 <button 
                                   onClick={() => handleDownloadHrReceipt(row.acknowledgment_id)}
-                                  className="px-3 py-1.5 bg-emerald-600 hover:bg-emerald-500 border border-emerald-500/30 text-white rounded-lg text-[10px] font-bold transition-all cursor-pointer inline-flex items-center gap-1"
+                                  className="px-2.5 py-1.5 bg-emerald-600 hover:bg-emerald-500 border border-emerald-500/30 text-white rounded-lg text-[10px] font-bold transition-all cursor-pointer inline-flex items-center gap-1"
                                 >
                                   <Download className="w-3 h-3" /> Receipt
                                 </button>
                               ) : (
                                 <button 
                                   onClick={() => sendReminderNotification(row)}
-                                  className="px-3 py-1.5 bg-indigo-600/10 hover:bg-indigo-600 border border-indigo-500/30 hover:text-white text-indigo-400 rounded-lg text-[10px] font-bold transition-all cursor-pointer"
+                                  disabled={!!sentReminders[key]}
+                                  className={cn(
+                                    "px-2.5 py-1.5 rounded-lg text-[10px] font-bold transition-all cursor-pointer border",
+                                    sentReminders[key]
+                                      ? "bg-slate-800/40 border-slate-700/30 text-slate-500 cursor-not-allowed"
+                                      : "bg-indigo-600/10 hover:bg-indigo-600 border-indigo-500/30 hover:text-white text-indigo-400"
+                                  )}
                                 >
-                                  Remind
+                                  {sentReminders[key] ? "Reminded" : "Remind"}
                                 </button>
                               )}
                             </td>
@@ -1579,6 +1810,143 @@ export default function Dashboard({ user, onLogout }) {
                     <span className="text-xs text-red-500 font-semibold block">{pdfError}</span>
                   )}
                 </div>
+              </div>
+
+              {/* DEMO MODE WARNING BANNER */}
+              {isDemoMode && (
+                <div className="mb-6 p-4 bg-amber-500/10 border border-amber-500/30 text-amber-800 rounded-2xl flex items-center gap-3 shadow-md no-print">
+                  <Sparkles className="w-5 h-5 text-amber-600 flex-shrink-0 animate-pulse" />
+                  <div>
+                    <h4 className="text-sm font-extrabold">Demo Mode Active</h4>
+                    <p className="text-xs text-slate-650 font-medium">Showing preloaded audit data for demonstration.</p>
+                  </div>
+                </div>
+              )}
+
+              {/* PRIMARY COMPLIANCE KPI BOARD */}
+              <div className="mb-6 bg-[#0f172a] text-white rounded-3xl p-6 md:p-8 border border-slate-800 shadow-xl relative overflow-hidden">
+                <div className="absolute top-0 right-0 w-80 h-80 rounded-full bg-indigo-500/5 blur-[120px] pointer-events-none" />
+                
+                {/* Meta details header */}
+                <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 pb-6 border-b border-slate-800 mb-6">
+                  <div>
+                    <span className="text-[10px] bg-indigo-500/15 text-indigo-400 font-extrabold px-2.5 py-1 rounded border border-indigo-500/25 uppercase tracking-wider">
+                      {isDemoMode ? "Demonstration Preview" : "Live Compliance Scan"}
+                    </span>
+                    <h3 className="text-xl font-extrabold text-white mt-2 tracking-tight">Executive Audit Summary</h3>
+                  </div>
+                  <div className="text-xs text-slate-400 font-medium font-mono text-left md:text-right space-y-1">
+                    <div><span className="text-slate-550 font-bold uppercase text-[9px] tracking-wider block">Audit Date</span> {auditData.timestamp ? new Date(auditData.timestamp).toLocaleString() : new Date().toLocaleString()}</div>
+                    <div className="flex flex-wrap gap-2.5 mt-1.5 justify-start md:justify-end">
+                      <span className="bg-slate-900 border border-slate-800 px-2.5 py-1 rounded flex items-center gap-1.5 text-xs text-slate-350"><FileText className="w-3.5 h-3.5 text-indigo-400" /> {auditData.policy_filename || 'policy_document.pdf'}</span>
+                      <span className="bg-slate-900 border border-slate-800 px-2.5 py-1 rounded flex items-center gap-1.5 text-xs text-slate-350"><FileSpreadsheet className="w-3.5 h-3.5 text-emerald-400" /> {auditData.log_filename || 'system_logs.csv'}</span>
+                    </div>
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-stretch">
+                  {/* Score circle gauge / big score */}
+                  <div className="lg:col-span-4 flex flex-col justify-center items-center text-center bg-[#0b0f1a] border border-slate-850 p-6 rounded-2xl">
+                    <span className="text-slate-500 uppercase tracking-widest text-[10px] font-bold">Overall Compliance</span>
+                    <div className="text-6xl font-extrabold text-white my-3 flex items-baseline gap-1">
+                      {simulatedState === 'high-risk' ? 22 : (auditData?.metrics?.compliance_score || 100)}
+                      <span className="text-xl text-slate-500 font-bold">/ 100</span>
+                    </div>
+                    {/* Compliance status badge */}
+                    {(() => {
+                      const score = simulatedState === 'high-risk' ? 22 : (auditData?.metrics?.compliance_score || 100);
+                      let label = "Compliant";
+                      let colorClass = "bg-emerald-500/10 border-emerald-500/20 text-emerald-400";
+                      
+                      if (score < 50) {
+                        label = "Action Required";
+                        colorClass = "bg-red-500/10 border-red-500/20 text-red-400";
+                      } else if (score < 80) {
+                        label = "Needs Attention";
+                        colorClass = "bg-amber-500/10 border-amber-500/20 text-amber-400";
+                      }
+                      
+                      return (
+                        <span className={cn("px-3 py-1 rounded-full text-xs font-bold border tracking-wide uppercase", colorClass)}>
+                          {label}
+                        </span>
+                      );
+                    })()}
+                  </div>
+
+                  {/* Findings breakdown Grid */}
+                  <div className="lg:col-span-8 grid grid-cols-2 sm:grid-cols-4 gap-4 font-sans">
+                    
+                    <div className="bg-[#0b0f1a] border border-slate-850 p-4.5 rounded-2xl flex flex-col justify-between">
+                      <span className="text-slate-500 uppercase text-[9px] font-bold block">Total Findings</span>
+                      <span className="text-2xl font-extrabold text-white block mt-3">
+                        {violations.length} <span className="text-xs text-slate-500 font-semibold">findings</span>
+                      </span>
+                      <span className="text-[9px] text-slate-550 block mt-1">Identified risks</span>
+                    </div>
+
+                    <div className="bg-[#0b0f1a] border border-slate-850 p-4.5 rounded-2xl flex flex-col justify-between">
+                      <span className="text-slate-500 uppercase text-[9px] font-bold block">Critical Findings</span>
+                      <span className="text-2xl font-extrabold text-red-400 block mt-3">
+                        {violations.filter(v => (v.severity || '').toUpperCase() === 'CRITICAL').length} <span className="text-xs text-slate-500 font-semibold font-sans">critical</span>
+                      </span>
+                      <span className="text-[9px] text-slate-550 block mt-1">SLA warnings active</span>
+                    </div>
+
+                    <div className="bg-[#0b0f1a] border border-slate-850 p-4.5 rounded-2xl flex flex-col justify-between">
+                      <span className="text-slate-500 uppercase text-[9px] font-bold block">Resolved Findings</span>
+                      <span className="text-2xl font-extrabold text-emerald-400 block mt-3">
+                        {violations.filter(v => ['RESOLVED', 'MITIGATED'].includes((v.status || '').toUpperCase())).length} <span className="text-xs text-slate-500 font-semibold font-sans">resolved</span>
+                      </span>
+                      <span className="text-[9px] text-slate-555 block mt-1">Verified fixed</span>
+                    </div>
+
+                    <div className="bg-[#0b0f1a] border border-slate-850 p-4.5 rounded-2xl flex flex-col justify-between">
+                      <span className="text-slate-500 uppercase text-[9px] font-bold block">Pending Actions</span>
+                      <span className="text-2xl font-extrabold text-orange-400 block mt-3">
+                        {violations.filter(v => ['OPEN', 'IN_PROGRESS', 'REQUIRES_CHANGES', 'REOPENED'].includes((v.status || '').toUpperCase())).length} <span className="text-xs text-slate-500 font-semibold font-sans">pending</span>
+                      </span>
+                      <span className="text-[9px] text-slate-555 block mt-1 font-medium">Awaiting response</span>
+                    </div>
+
+                  </div>
+                </div>
+
+                <div className="border-t border-slate-800/80 my-5" />
+
+                {/* Bottom line: Risk Level representation */}
+                <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3">
+                  <div className="flex items-center gap-2">
+                    <span className="text-xs text-slate-400 font-semibold">Security Threat Profile:</span>
+                    {(() => {
+                      const score = simulatedState === 'high-risk' ? 22 : (auditData?.metrics?.compliance_score || 100);
+                      const risk = 100 - score;
+                      let riskText = "Low Risk";
+                      let riskColor = "text-emerald-400";
+                      
+                      if (risk > 70) {
+                        riskText = "High Risk";
+                        riskColor = "text-red-400";
+                      } else if (risk > 35) {
+                        riskText = "Moderate Risk";
+                        riskColor = "text-amber-400";
+                      }
+                      
+                      return (
+                        <span className={cn("text-xs font-bold", riskColor)}>
+                          {riskText}
+                        </span>
+                      );
+                    })()}
+                  </div>
+                  
+                  {isDemoMode && (
+                    <div className="text-[9px] uppercase tracking-wider font-bold text-slate-500 font-mono">
+                      * Preloaded compliance configuration model active
+                    </div>
+                  )}
+                </div>
+
               </div>
 
               {/* HACKATHON COMPLIANCE SIMULATOR BANNER */}
@@ -1871,6 +2239,43 @@ export default function Dashboard({ user, onLogout }) {
                       <PlusCircle className="w-4 h-4 text-indigo-400" /> Run New Scan
                     </button>
                   </div>
+                </div>
+
+                {/* Policy Coverage Card */}
+                <div className="bg-[#0f172a] text-white p-6 rounded-2xl shadow-xl border border-slate-800 flex flex-col justify-between">
+                  <div>
+                    <h3 className="text-sm font-bold text-slate-350 mb-4 flex items-center gap-1.5">
+                      <Lock className="w-4 h-4 text-indigo-400" /> Policy Acknowledgment Coverage
+                    </h3>
+                    <div className="space-y-4">
+                      {policyCoverage.map((policy, idx) => (
+                        <div key={idx} className="space-y-1.5">
+                          <div className="flex justify-between items-center text-xs font-semibold">
+                            <span className="text-slate-350 truncate pr-2">{policy.title}</span>
+                            <span className="text-indigo-400 font-bold">{policy.rate}%</span>
+                          </div>
+                          <div className="w-full bg-slate-900 rounded-full h-2 overflow-hidden border border-slate-800/80">
+                            <div 
+                              className={cn(
+                                "h-full rounded-full transition-all duration-500",
+                                policy.rate >= 90 
+                                  ? "bg-emerald-500 shadow-[0_0_8px_rgba(16,185,129,0.2)]" 
+                                  : policy.rate >= 75 
+                                    ? "bg-indigo-500 shadow-[0_0_8px_rgba(99,102,241,0.2)]" 
+                                    : "bg-amber-500 shadow-[0_0_8px_rgba(245,158,11,0.2)]"
+                              )}
+                              style={{ width: `${policy.rate}%` }}
+                            />
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                  {isDemoMode && (
+                    <div className="text-[9px] text-slate-500 italic mt-4 font-mono">
+                      * Values represent simulated global enterprise rollout
+                    </div>
+                  )}
                 </div>
 
                 {/* 6. Compliance Framework Category Breakdown Card */}
@@ -2167,6 +2572,127 @@ export default function Dashboard({ user, onLogout }) {
           onClose={() => setSelectedViolation(null)}
           onStatusChanged={fetchViolations}
         />
+      )}
+
+      {/* POLICY SIGN-OFF DETAIL MODAL */}
+      {selectedAckForView && (
+        <div 
+          onClick={() => setSelectedAckForView(null)}
+          className="fixed inset-0 z-50 bg-[#020617]/85 backdrop-blur-sm flex items-center justify-center p-4 overflow-y-auto"
+        >
+          <div 
+            onClick={(e) => e.stopPropagation()}
+            className="w-full max-w-lg bg-[#0f172a] border border-slate-800 rounded-3xl overflow-hidden shadow-2xl animate-in zoom-in-95 duration-200 text-white my-8"
+          >
+            <div className="flex justify-between items-center p-6 bg-slate-900 border-b border-slate-850">
+              <div>
+                <h3 className="text-base font-extrabold text-white flex items-center gap-2">
+                  <Lock className="w-4 h-4 text-indigo-400" /> Acknowledgment Sign-off Detail
+                </h3>
+                <p className="text-[10px] text-slate-400 font-medium">Defensible electronic confirmation record metadata</p>
+              </div>
+              <button 
+                onClick={() => setSelectedAckForView(null)}
+                className="p-1.5 text-slate-400 hover:text-white bg-slate-800 hover:bg-slate-700 rounded-lg cursor-pointer"
+              >
+                <X className="w-3.5 h-3.5" />
+              </button>
+            </div>
+
+            {loadingAckDetail ? (
+              <div className="p-12 flex flex-col justify-center items-center gap-2">
+                <Loader2 className="w-8 h-8 text-indigo-500 animate-spin" />
+                <span className="text-xs text-slate-450 font-semibold animate-pulse">Loading receipt ledger...</span>
+              </div>
+            ) : ackViewDetail ? (
+              <div className="p-6 space-y-4 max-h-[70vh] overflow-y-auto custom-scrollbar">
+                
+                {/* Employee & Dept Info */}
+                <div className="grid grid-cols-2 gap-4 bg-[#070b14] p-4 rounded-xl border border-slate-850">
+                  <div>
+                    <span className="block text-[9px] uppercase font-bold text-slate-500">Employee</span>
+                    <span className="text-xs font-bold text-white mt-1 block">{ackViewDetail.employee_name}</span>
+                    <span className="text-[10px] text-slate-450 font-mono block">ID: {ackViewDetail.employee_id}</span>
+                  </div>
+                  <div>
+                    <span className="block text-[9px] uppercase font-bold text-slate-500">Department</span>
+                    <span className="text-xs font-bold text-white mt-1 block">{ackViewDetail.department || 'IT Operations'}</span>
+                    <span className="text-[10px] text-slate-450 font-mono block">Email: {ackViewDetail.employee_email}</span>
+                  </div>
+                </div>
+
+                {/* Policy details */}
+                <div className="p-4 rounded-xl bg-slate-900 border border-slate-850 space-y-2">
+                  <div>
+                    <span className="block text-[9px] uppercase font-bold text-slate-500">Policy Reference</span>
+                    <span className="text-xs font-bold text-indigo-400 mt-1 block">
+                      {ackViewDetail.policy_title || 'Corporate Compliance Agreement'}
+                    </span>
+                  </div>
+                  <div className="grid grid-cols-2 gap-2 text-[10px] font-medium text-slate-400 pt-1.5 border-t border-slate-850">
+                    <div>Version: <span className="text-slate-200 font-bold">{ackViewDetail.policy_version || '1.0'}</span></div>
+                    <div>Status: <span className={cn(
+                      "font-bold uppercase",
+                      ackViewDetail.status === 'SIGNED' ? "text-emerald-450" : ackViewDetail.status === 'OVERDUE' ? "text-red-400" : "text-amber-400"
+                    )}>{ackViewDetail.status === 'SIGNED' ? 'Acknowledged' : ackViewDetail.status}</span></div>
+                  </div>
+                </div>
+
+                {/* Signature details */}
+                <div className="p-4 rounded-xl bg-slate-900 border border-slate-850 space-y-2.5 text-xs text-slate-350">
+                  <div className="flex justify-between border-b border-slate-850 pb-1.5">
+                    <span className="text-slate-450">Acknowledgment Date:</span>
+                    <span className="font-bold text-white font-mono">{ackViewDetail.signed_at ? new Date(ackViewDetail.signed_at).toLocaleString() : 'Unavailable'}</span>
+                  </div>
+                  <div className="flex justify-between border-b border-slate-850 pb-1.5">
+                    <span className="text-slate-450">Signing IP Source:</span>
+                    <span className="font-bold text-white font-mono">{ackViewDetail.signed_ip_address || 'Unavailable'}</span>
+                  </div>
+                  <div className="flex justify-between border-b border-slate-850 pb-1.5">
+                    <span className="text-slate-450">Acknowledgment ID:</span>
+                    <span className="font-bold text-slate-300 font-mono">{ackViewDetail.acknowledgment_id || 'Unavailable'}</span>
+                  </div>
+                  <div className="flex justify-between border-b border-slate-850 pb-1.5">
+                    <span className="text-slate-450">Signing Method:</span>
+                    <span className="font-bold text-slate-350">{ackViewDetail.authentication_method || 'JWT_LOGIN'}</span>
+                  </div>
+                  <div className="space-y-1">
+                    <span className="text-[9px] uppercase font-bold text-slate-500 block">Browser User Agent:</span>
+                    <p className="text-[10px] text-slate-400 font-mono bg-slate-950/40 p-2 rounded border border-slate-850/60 leading-relaxed max-h-16 overflow-y-auto">
+                      {ackViewDetail.user_agent || 'Mozilla/5.0 (System)'}
+                    </p>
+                  </div>
+                </div>
+
+                {/* SHA & receipt hashes */}
+                <div className="p-4 rounded-xl bg-[#0b0f1a] border border-slate-850 text-[10px] space-y-2 font-mono">
+                  <div>
+                    <span className="block text-[8px] uppercase font-bold text-slate-500">Policy document SHA-256</span>
+                    <span className="text-slate-400 break-all select-all block mt-0.5">{ackViewDetail.policy_document_sha256 || 'Unavailable'}</span>
+                  </div>
+                  <div className="border-t border-slate-900 pt-2">
+                    <span className="block text-[8px] uppercase font-bold text-slate-500">Audit ledger receipt hash</span>
+                    <span className="text-emerald-500 break-all select-all font-bold block mt-0.5">{ackViewDetail.receipt_hash || 'Unavailable'}</span>
+                  </div>
+                </div>
+
+              </div>
+            ) : (
+              <div className="p-8 text-center text-slate-500 text-xs italic">
+                Failed to populate acknowledgment detail metrics.
+              </div>
+            )}
+
+            <div className="p-4 bg-slate-900/60 border-t border-slate-850 flex justify-end">
+              <button 
+                onClick={() => setSelectedAckForView(null)}
+                className="px-4 py-2 bg-slate-800 hover:bg-slate-700 text-slate-400 hover:text-slate-200 text-xs font-bold rounded-xl cursor-pointer"
+              >
+                Close Details
+              </button>
+            </div>
+          </div>
+        </div>
       )}
 
       {/* Offscreen Printable Report */}

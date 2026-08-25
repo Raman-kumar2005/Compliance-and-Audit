@@ -13,6 +13,7 @@ export default function Login({ onLogin, onBack }) {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [validationErrors, setValidationErrors] = useState({});
+  const [selectedCompany, setSelectedCompany] = useState('technova'); // 'technova' | 'aegispoint'
 
   const BACKEND_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000/api';
 
@@ -22,9 +23,9 @@ export default function Login({ onLogin, onBack }) {
     const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
     if (!email) {
-      errors.email = 'Corporate email is required';
+      errors.email = 'Work email is required';
     } else if (!emailRegex.test(email)) {
-      errors.email = 'Please enter a valid corporate email';
+      errors.email = 'Please enter a valid work email';
     }
 
     if (!password) {
@@ -57,7 +58,7 @@ export default function Login({ onLogin, onBack }) {
       setLoading(false);
 
       if (!response.ok) {
-        setError(data.detail || 'Incorrect corporate email or password.');
+        setError(data.detail || 'Incorrect work email or password.');
         return;
       }
 
@@ -75,11 +76,17 @@ export default function Login({ onLogin, onBack }) {
     setLoading(true);
 
     const demoCredentials = {
-      employee: { email: 'employee.ross@security-hq.com', password: 'secretEmployeePass' },
-      hr: { email: 'auditor.compliance@firm-wide.com', password: 'secureHRAdminPass' }
+      technova: {
+        employee: { email: 'employee@technova-demo.com', password: 'passwordA123' },
+        hr: { email: 'hr.officer@technova-demo.com', password: 'passwordA123' }
+      },
+      aegispoint: {
+        employee: { email: 'employee@aegispoint-demo.com', password: 'passwordB123' },
+        hr: { email: 'compliance@aegispoint-demo.com', password: 'passwordB123' }
+      }
     };
 
-    const target = demoCredentials[roleType];
+    const target = demoCredentials[selectedCompany][roleType];
     setEmail(target.email);
     setPassword(target.password);
 
@@ -204,7 +211,7 @@ export default function Login({ onLogin, onBack }) {
           
           {/* Email input */}
           <div className="space-y-1.5">
-            <label className="block text-[10px] uppercase font-extrabold tracking-wider text-slate-400">Corporate Email</label>
+            <label className="block text-[10px] uppercase font-extrabold tracking-wider text-slate-400">Work Email</label>
             <div className="relative">
               <Mail className="absolute left-3.5 top-3.5 w-4.5 h-4.5 text-slate-500" />
               <input
@@ -214,7 +221,7 @@ export default function Login({ onLogin, onBack }) {
                 onChange={(e) => setEmail(e.target.value)}
                 disabled={loading}
                 className={cn(
-                  "w-full bg-[#030712] border rounded-xl pl-10 pr-4 py-3 text-sm text-slate-200 focus:outline-none focus:ring-2 placeholder-slate-600 transition-all font-medium",
+                  "w-full bg-[#030712] border rounded-xl pl-10 pr-4 py-3 text-sm text-slate-200 focus:outline-none focus:ring-2 placeholder-slate-600 transition-all font-medium focus:border-indigo-500 focus:ring-indigo-500/20",
                   validationErrors.email 
                     ? "border-red-500 focus:ring-red-500/50" 
                     : activeTab === 'employee' 
@@ -243,7 +250,7 @@ export default function Login({ onLogin, onBack }) {
                 onChange={(e) => setPassword(e.target.value)}
                 disabled={loading}
                 className={cn(
-                  "w-full bg-[#030712] border rounded-xl pl-10 pr-10 py-3 text-sm text-slate-200 focus:outline-none focus:ring-2 placeholder-slate-600 transition-all font-medium",
+                  "w-full bg-[#030712] border rounded-xl pl-10 pr-10 py-3 text-sm text-slate-200 focus:outline-none focus:ring-2 placeholder-slate-600 transition-all font-medium focus:border-indigo-500 focus:ring-indigo-500/20",
                   validationErrors.password 
                     ? "border-red-500 focus:ring-red-500/50" 
                     : activeTab === 'employee' 
@@ -278,7 +285,7 @@ export default function Login({ onLogin, onBack }) {
             type="submit"
             disabled={loading}
             className={cn(
-              "w-full py-3.5 rounded-xl font-bold text-sm text-white flex justify-center items-center gap-2 transition-all cursor-pointer disabled:opacity-50 select-none shadow-lg mt-6",
+              "w-full py-3.5 rounded-xl font-bold text-sm text-white flex justify-center items-center gap-2 transition-all cursor-pointer disabled:opacity-50 select-none shadow-lg mt-6 focus:outline-none focus:ring-2 focus:ring-indigo-500/50",
               activeTab === 'employee' 
                 ? "bg-indigo-600 hover:bg-indigo-700 shadow-indigo-500/10" 
                 : "bg-purple-600 hover:bg-purple-700 shadow-purple-500/10"
@@ -294,12 +301,37 @@ export default function Login({ onLogin, onBack }) {
           </button>
         </form>
 
-        {/* Divider */}
-        <div className="relative my-6 text-center">
-          <div className="absolute inset-0 flex items-center"><div className="w-full border-t border-slate-800/80"></div></div>
-          <span className="relative bg-[#0b0f19] px-3 text-[10px] uppercase font-extrabold tracking-widest text-slate-500">
-            Hackathon Demo Bypass
-          </span>
+        {/* Company Switcher for Demo */}
+        <div className="space-y-2 mb-4">
+          <label className="block text-[9px] uppercase font-extrabold tracking-widest text-slate-500 text-center">
+            Target Demo Company
+          </label>
+          <div className="flex bg-slate-950 p-1.5 rounded-xl border border-slate-900 gap-1">
+            <button
+              type="button"
+              onClick={() => setSelectedCompany('technova')}
+              className={cn(
+                "flex-1 py-1.5 text-[10px] font-bold rounded-lg transition-all cursor-pointer",
+                selectedCompany === 'technova'
+                  ? "bg-indigo-600 text-white shadow-md shadow-indigo-500/10"
+                  : "text-slate-400 hover:text-slate-200"
+              )}
+            >
+              TechNova Technologies
+            </button>
+            <button
+              type="button"
+              onClick={() => setSelectedCompany('aegispoint')}
+              className={cn(
+                "flex-1 py-1.5 text-[10px] font-bold rounded-lg transition-all cursor-pointer",
+                selectedCompany === 'aegispoint'
+                  ? "bg-purple-600 text-white shadow-md shadow-purple-500/10"
+                  : "text-slate-400 hover:text-slate-200"
+              )}
+            >
+              AegisPoint Systems
+            </button>
+          </div>
         </div>
 
         {/* Demo Fast Logins */}
@@ -308,22 +340,22 @@ export default function Login({ onLogin, onBack }) {
             type="button"
             disabled={loading}
             onClick={() => handleQuickLogin('employee')}
-            className="flex flex-col items-center justify-center p-3 rounded-2xl bg-[#0f172a]/30 border border-slate-800/80 hover:border-indigo-500/30 hover:bg-[#0f172a]/80 transition-all cursor-pointer text-center group disabled:opacity-50"
+            className="flex flex-col items-center justify-center p-3 rounded-2xl bg-[#0f172a]/30 border border-slate-800/80 hover:border-indigo-500/30 hover:bg-[#0f172a]/80 focus:outline-none focus:ring-2 focus:ring-indigo-500/50 transition-all cursor-pointer text-center group disabled:opacity-50"
           >
             <ShieldCheck className="w-5 h-5 text-indigo-400 mb-1.5 group-hover:scale-110 transition-transform" />
-            <span className="text-[10px] font-bold text-slate-200">Demo Employee</span>
-            <span className="text-[8px] text-slate-500 font-semibold mt-0.5">Mock Personal Records</span>
+            <span className="text-[10px] font-bold text-slate-200">Employee Demo</span>
+            <span className="text-[8px] text-slate-500 font-semibold mt-0.5 font-sans">Mock Personal Records</span>
           </button>
           
           <button
             type="button"
             disabled={loading}
             onClick={() => handleQuickLogin('hr')}
-            className="flex flex-col items-center justify-center p-3 rounded-2xl bg-[#0f172a]/30 border border-slate-800/80 hover:border-purple-500/30 hover:bg-[#0f172a]/80 transition-all cursor-pointer text-center group disabled:opacity-50"
+            className="flex flex-col items-center justify-center p-3 rounded-2xl bg-[#0f172a]/30 border border-slate-800/80 hover:border-purple-500/30 hover:bg-[#0f172a]/80 focus:outline-none focus:ring-2 focus:ring-purple-500/50 transition-all cursor-pointer text-center group disabled:opacity-50"
           >
             <Sparkles className="w-5 h-5 text-purple-400 mb-1.5 group-hover:scale-110 transition-transform" />
-            <span className="text-[10px] font-bold text-slate-200">Demo HR Auditor</span>
-            <span className="text-[8px] text-slate-500 font-semibold mt-0.5">Full Management Suite</span>
+            <span className="text-[10px] font-bold text-slate-200">HR Auditor Demo</span>
+            <span className="text-[8px] text-slate-500 font-semibold mt-0.5 font-sans">Full Management Suite</span>
           </button>
         </div>
 

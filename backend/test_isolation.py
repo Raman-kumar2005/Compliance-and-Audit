@@ -10,7 +10,7 @@ class TestMultiTenantIsolation(unittest.TestCase):
         # Initialize the TestClient
         cls.client = TestClient(app)
         # Seed test data for Company A, Company B, and Security HQ
-        for tenant_id in ["tenant-company-a", "tenant-company-b", "tenant-security-hq"]:
+        for tenant_id in ["technova-demo", "aegispoint-demo", "tenant-security-hq"]:
             seed_data_if_empty(tenant_id)
             seed_policies_if_empty(tenant_id)
 
@@ -101,10 +101,10 @@ class TestMultiTenantIsolation(unittest.TestCase):
         resp_emp = self.client.get("/api/violations", headers=headers_emp)
         self.assertEqual(resp_emp.status_code, 200)
         
-        # Check that Bob's returned violations are only assigned to Bob (EMP-A-01)
+        # Check that Bob's returned violations are only assigned to Bob (EMP-TN-1042)
         vios = resp_emp.json()
         for v in vios:
-            self.assertEqual(v["assigned_employee_id"], "EMP-A-01", "Employee Bob accessed a violation assigned to another user.")
+            self.assertEqual(v["assigned_employee_id"], "EMP-TN-1042", "Employee Bob accessed a violation assigned to another user.")
 
     def test_cross_tenant_violation_remediation_blocked(self):
         # Charlie (Company B HR) login

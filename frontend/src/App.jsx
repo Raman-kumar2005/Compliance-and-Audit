@@ -50,11 +50,12 @@ export default function App() {
   };
 
   const handleLogin = (loginResponse) => {
-    // loginResponse is { access_token, user: { id, email, role, tenant_id, company_name } }
+    const isHR = ['HR', 'HR Compliance Officer', 'Compliance Officer'].includes(loginResponse.user.role);
     const userProfile = {
       id: loginResponse.user.id,
       email: loginResponse.user.email,
-      role: loginResponse.user.role === 'HR' ? 'HR' : 'Employee',
+      role: isHR ? 'HR' : 'Employee',
+      rawRole: loginResponse.user.role,
       tenant_id: loginResponse.user.tenant_id,
       company_name: loginResponse.user.company_name,
       token: loginResponse.access_token

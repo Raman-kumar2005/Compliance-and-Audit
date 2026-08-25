@@ -515,10 +515,10 @@ export default function MitigationModal({
             </div>
           </div>
 
-          {/* Policy Breach Description */}
-          <div className="bg-[#0f172a]/20 border border-slate-800 p-5 rounded-2xl space-y-3">
+          {/* 1. Policy Control Rule (Clause) */}
+          <div className="bg-[#0f172a]/20 border border-slate-800 p-5 rounded-2xl space-y-2">
             <div className="flex justify-between items-center flex-wrap gap-2">
-              <span className="text-[9px] uppercase font-bold text-slate-400 tracking-wider">Policy Control Rule</span>
+              <span className="text-[9px] uppercase font-bold text-slate-400 tracking-wider">1. Policy Control Clause</span>
               <span className={cn(
                 "flex items-center gap-1.5 px-3 py-1 rounded-full text-[9px] font-extrabold uppercase border tracking-wider",
                 severityStyle.badge
@@ -527,40 +527,65 @@ export default function MitigationModal({
                 {severityStyle.label}
               </span>
             </div>
-            <h4 className="text-sm md:text-base font-extrabold text-white leading-snug">
+            <h4 className="text-xs md:text-sm font-extrabold text-white leading-snug">
               {violation.rule_violated || 'Unknown Policy Directive'}
             </h4>
           </div>
 
-          {/* AI Explanation & Recommendation */}
+          {/* 2. Log Evidence (Sanitized Grid) */}
+          <div className="space-y-2">
+            <div className="flex justify-between items-center">
+              <span className="text-[9px] uppercase font-bold text-slate-400 tracking-wider block">2. Log Evidence</span>
+              <span className="text-[8px] text-amber-500 font-extrabold uppercase font-mono bg-amber-500/10 border border-amber-500/20 px-2 py-0.5 rounded">Masked for Privacy</span>
+            </div>
+            {violation.sanitized_evidence ? (
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 p-4 bg-[#030712] border border-slate-850 rounded-2xl font-mono text-[10px]">
+                {Object.entries(violation.sanitized_evidence).map(([key, val]) => (
+                  <div key={key} className="flex justify-between items-center border-b border-slate-850/60 pb-1">
+                    <span className="text-slate-500 font-semibold">{key}</span>
+                    <span className={cn(
+                      "truncate max-w-[200px] font-medium",
+                      val === '[MASKED FOR PRIVACY]' ? "text-amber-500" : "text-slate-350"
+                    )}>
+                      {String(val)}
+                    </span>
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <div className="p-4 bg-[#030712] border border-slate-850 text-slate-500 text-xs italic text-center rounded-2xl">
+                Evidence unavailable
+              </div>
+            )}
+          </div>
+
+          {/* 3. Detected Violation (Explanation) & 4. Risk Assessment */}
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <div className="bg-[#0f172a]/30 border border-slate-850 p-5 rounded-2xl flex flex-col justify-between">
               <div>
-                <span className="text-[9px] uppercase font-bold text-slate-400 tracking-wider block mb-2">AI Incident Explanation</span>
-                <p className="text-xs text-slate-300 leading-relaxed">
+                <span className="text-[9px] uppercase font-bold text-slate-400 tracking-wider block mb-2">3. Detected Violation</span>
+                <p className="text-xs text-slate-300 leading-relaxed font-semibold">
                   {violation.explanation}
                 </p>
               </div>
             </div>
 
-            <div className="bg-indigo-950/20 border border-indigo-900/30 p-5 rounded-2xl flex flex-col justify-between">
+            <div className="bg-[#0f172a]/30 border border-slate-850 p-5 rounded-2xl flex flex-col justify-between">
               <div>
-                <span className="text-[9px] uppercase font-bold text-indigo-400 tracking-wider block mb-2">Recommended Next Action</span>
-                <p className="text-xs text-indigo-200 leading-relaxed font-semibold">
-                  {violation.recommendation}
+                <span className="text-[9px] uppercase font-bold text-slate-400 tracking-wider block mb-2">4. Risk Assessment & Severity Reasoning</span>
+                <p className="text-xs text-slate-300 leading-relaxed">
+                  Compliance evaluation classified this incident as <strong className={cn("font-extrabold uppercase", severityStyle.badge.includes('red') ? 'text-red-400' : 'text-amber-450')}>{violation.severity || 'Medium'}</strong>. This severity assessment is derived dynamically based on breach proximity to access control boundaries, PII visibility risks, and organizational policy constraints.
                 </p>
               </div>
             </div>
           </div>
 
-          {/* System Log Evidence */}
-          <div className="space-y-2">
-            <span className="text-[9px] uppercase font-bold text-slate-400 tracking-wider block">Raw System Log Evidence</span>
-            <div className="relative rounded-2xl overflow-hidden border border-slate-800 bg-[#030712] p-4">
-              <pre className="font-mono text-cyan-400 text-xs whitespace-pre-wrap break-all max-h-32 overflow-y-auto pr-2 custom-scrollbar">
-                {violation.log_entry}
-              </pre>
-            </div>
+          {/* 5. Recommendation (Mitigation advice) */}
+          <div className="p-5 bg-indigo-950/20 border border-indigo-900/30 rounded-2xl">
+            <span className="text-[9px] uppercase font-bold text-indigo-400 tracking-wider block mb-2">5. Recommended Next Action</span>
+            <p className="text-xs text-indigo-200 leading-relaxed font-semibold">
+              {violation.recommendation}
+            </p>
           </div>
 
           {/* Submitted Evidence View (If exits) */}

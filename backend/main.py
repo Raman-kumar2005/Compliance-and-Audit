@@ -308,63 +308,102 @@ def decode_jwt(token: str) -> dict:
         return None
 
 USERS_DB = {
+    "hr.officer@technova-demo.com": {
+        "id": "usr-technova-hr",
+        "name": "TechNova HR Officer",
+        "email": "hr.officer@technova-demo.com",
+        "password": "passwordA123",
+        "role": "HR Compliance Officer",
+        "tenant_id": "technova-demo",
+        "company_name": "TechNova Technologies"
+    },
+    "employee@technova-demo.com": {
+        "id": "usr-technova-emp",
+        "name": "TechNova Employee",
+        "email": "employee@technova-demo.com",
+        "password": "passwordA123",
+        "role": "Employee",
+        "employee_id": "EMP-TN-1042",
+        "tenant_id": "technova-demo",
+        "company_name": "TechNova Technologies"
+    },
+    "compliance@aegispoint-demo.com": {
+        "id": "usr-aegispoint-hr",
+        "name": "AegisPoint Compliance Officer",
+        "email": "compliance@aegispoint-demo.com",
+        "password": "passwordB123",
+        "role": "Compliance Officer",
+        "tenant_id": "aegispoint-demo",
+        "company_name": "AegisPoint Systems"
+    },
+    "employee@aegispoint-demo.com": {
+        "id": "usr-aegispoint-emp",
+        "name": "AegisPoint Employee",
+        "email": "employee@aegispoint-demo.com",
+        "password": "passwordB123",
+        "role": "Employee",
+        "employee_id": "EMP-AP-2011",
+        "tenant_id": "aegispoint-demo",
+        "company_name": "AegisPoint Systems"
+    },
+    # Preserve original users for test_isolation.py compatibility but map them to the proper tenants!
     "hr.alice@company-a.com": {
         "id": "usr-alice",
         "name": "Alice",
         "email": "hr.alice@company-a.com",
         "password": "passwordA123",
-        "role": "HR",
-        "tenant_id": "tenant-company-a",
-        "company_name": "Company A"
+        "role": "HR Compliance Officer",
+        "tenant_id": "technova-demo",
+        "company_name": "TechNova Technologies"
     },
     "employee.bob@company-a.com": {
         "id": "usr-bob",
         "name": "Bob",
         "email": "employee.bob@company-a.com",
         "password": "passwordA123",
-        "role": "EMPLOYEE",
-        "employee_id": "EMP-A-01",
-        "tenant_id": "tenant-company-a",
-        "company_name": "Company A"
+        "role": "Employee",
+        "employee_id": "EMP-TN-1042",
+        "tenant_id": "technova-demo",
+        "company_name": "TechNova Technologies"
     },
     "hr.charlie@company-b.com": {
         "id": "usr-charlie",
         "name": "Charlie",
         "email": "hr.charlie@company-b.com",
         "password": "passwordB123",
-        "role": "HR",
-        "tenant_id": "tenant-company-b",
-        "company_name": "Company B"
+        "role": "Compliance Officer",
+        "tenant_id": "aegispoint-demo",
+        "company_name": "AegisPoint Systems"
     },
     "employee.david@company-b.com": {
         "id": "usr-david",
         "name": "David",
         "email": "employee.david@company-b.com",
         "password": "passwordB123",
-        "role": "EMPLOYEE",
-        "employee_id": "EMP-B-01",
-        "tenant_id": "tenant-company-b",
-        "company_name": "Company B"
+        "role": "Employee",
+        "employee_id": "EMP-AP-2011",
+        "tenant_id": "aegispoint-demo",
+        "company_name": "AegisPoint Systems"
     },
     "auditor.compliance@firm-wide.com": {
         "id": "usr-auditor",
         "name": "Auditor",
         "email": "auditor.compliance@firm-wide.com",
         "password": "secureHRAdminPass",
-        "role": "HR",
-        "tenant_id": "tenant-security-hq",
-        "company_name": "Security HQ",
-        "employee_id": "EMP-1002"
+        "role": "HR Compliance Officer",
+        "tenant_id": "technova-demo",
+        "company_name": "TechNova Technologies",
+        "employee_id": "EMP-TN-1042"
     },
     "employee.ross@security-hq.com": {
         "id": "usr-ross",
         "name": "Ross",
         "email": "employee.ross@security-hq.com",
         "password": "secretEmployeePass",
-        "role": "EMPLOYEE",
-        "employee_id": "EMP-3430",
-        "tenant_id": "tenant-security-hq",
-        "company_name": "Security HQ"
+        "role": "Employee",
+        "employee_id": "EMP-TN-1051",
+        "tenant_id": "technova-demo",
+        "company_name": "TechNova Technologies"
     }
 }
 
@@ -378,6 +417,9 @@ def get_current_user(authorization: str = Header(None)):
         raise HTTPException(status_code=401, detail="Unauthorized: Invalid or expired token.")
         
     return claims
+
+def is_auditor(user: dict) -> bool:
+    return user.get("role") in ["HR", "HR Compliance Officer", "Compliance Officer"]
 
 class LoginRequest(BaseModel):
     email: str
@@ -709,7 +751,7 @@ def execute_audit(
     hr_email: str = Form(None),
     current_user: dict = Depends(get_current_user)
 ):
-    if current_user["role"] != "HR":
+    if not is_auditor(current_user):
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Access denied: HR permissions required to initiate compliance audit scans."
@@ -1082,13 +1124,12 @@ def seed_data_if_empty(tenant_id: str = "tenant-security-hq"):
         timestamp = now_utc.isoformat() + "Z"
         
         # 1. VIO-demo-1 (Critical: 82% SLA consumed)
-        # Resolution limit is 24 hours. 82% elapsed: 19.68 hours ago (19 hours and 40 minutes)
         vio1_created = now_utc - timedelta(hours=19.68)
         vio1_created_str = vio1_created.isoformat() + "Z"
         vio1_ack_due = (vio1_created + timedelta(hours=1)).isoformat() + "Z"
         vio1_res_due = (vio1_created + timedelta(hours=24)).isoformat() + "Z"
         
-        # 2. VIO-demo-2 (High: Breached, resolution deadline 48 hours. Staged 60 hours ago. Breached 12 hours ago.)
+        # 2. VIO-demo-2 (High: Breached, resolution deadline 48 hours. Staged 60 hours ago.)
         vio2_created = now_utc - timedelta(hours=60)
         vio2_created_str = vio2_created.isoformat() + "Z"
         vio2_ack_due = (vio2_created + timedelta(hours=4)).isoformat() + "Z"
@@ -1105,19 +1146,118 @@ def seed_data_if_empty(tenant_id: str = "tenant-security-hq"):
         vio4_created_str = vio4_created.isoformat() + "Z"
         vio4_res_due = (vio4_created + timedelta(days=14)).isoformat() + "Z"
         
+        # Setup company specific data variables
+        is_technova = tenant_id in ["technova-demo", "tenant-company-a"]
+        is_aegispoint = tenant_id in ["aegispoint-demo", "tenant-company-b"]
+        
+        if is_technova:
+            emp_id = "EMP-TN-1042"
+            emp_name = "Aarav Mehta"
+            emp_email = "aarav@technova-demo.com"
+            emp_dept = "Engineering"
+            lead_name = "TechNova HR Officer"
+            lead_email = "hr.officer@technova-demo.com"
+            company_name = "TechNova Technologies"
+            score = 85
+            violations_by_dept = {"Engineering": 2, "Finance": 1, "IT": 1, "Human Resources": 0, "Operations": 0}
+            policy_filename = "Enterprise_HR_Compliance_Policy.pdf"
+            
+            v1_log = "GitHub Commit push: Repo 'technova-core', File: 'config.json', Secret: 'sk_live_tn_9082a'"
+            v1_rule = "Policy 3.2 - Open Access Key in Version Control"
+            v1_exp = f"An active production access key 'sk_live_tn_9082a' was committed to TechNova public repository by {emp_name}."
+            v1_rec = "Rotate the TechNova access secret immediately and delete the GitHub commit log history."
+            
+            v2_log = f"Employee ID: {emp_name}, Dept: Engineering, Security Training Date: 15-Jan-26, Status: Incomplete"
+            v2_rule = "Policy 4.3 - Training Completion Requirements"
+            v2_exp = f"TechNova employee {emp_name} has not completed the mandatory annual security awareness training module."
+            v2_rec = "Immediately access the TechNova training portal and complete the module by the end of the current cycle."
+            
+            v3_log = "CFO wire transfer portal: Bypass alert for transaction wire ID 99281, TechNova Vault"
+            v3_rule = "Policy 1.4 - Unauthenticated Financial Transactions"
+            v3_exp = "A TechNova wire transfer was executed without Multi-Factor Authentication approval."
+            v3_rec = "Verify transactions under dual-custody approval and attach transaction ticket credentials."
+            
+            v4_log = "Database CLI query executed on TechNova employee salary table from host 10.0.4.15"
+            v4_rule = "Policy 4.1 - Unauthorised PII Access"
+            v4_exp = "Direct SELECT query on TechNova salary table was executed without authorized access control token."
+            v4_rec = "Restrict database access control layers and lock unauthorized direct console query options."
+
+        elif is_aegispoint:
+            emp_id = "EMP-AP-2011"
+            emp_name = "Meera Nair"
+            emp_email = "meera@aegispoint-demo.com"
+            emp_dept = "Security Operations"
+            lead_name = "AegisPoint Compliance Officer"
+            lead_email = "compliance@aegispoint-demo.com"
+            company_name = "AegisPoint Systems"
+            score = 72
+            violations_by_dept = {"Security Operations": 2, "Finance": 1, "Technology": 1, "People Operations": 0, "Client Services": 0}
+            policy_filename = "Workforce_Security_and_Access_Policy.pdf"
+            
+            v1_log = "GitHub Commit push: Repo 'aegispoint-shield', File: 'credentials.yaml', Secret: 'sk_live_ap_8812b'"
+            v1_rule = "Policy 2.1 - Client Credentials Storage Protection"
+            v1_exp = f"An active client security access key 'sk_live_ap_8812b' was committed to AegisPoint public codebase by {emp_name}."
+            v1_rec = "Revoke client credentials, cycle API secrets, and apply security commit hooks."
+            
+            v2_log = f"Employee ID: {emp_name}, Dept: Security Operations, Training Date: 02-Mar-26, Status: Incomplete"
+            v2_rule = "Policy 5.1 - Critical Security Operations Accreditation"
+            v2_exp = f"AegisPoint officer {emp_name} has exceeded the 30-day compliance training limit."
+            v2_rec = "Complete the AegisPoint Critical Security Operations accreditation class immediately."
+            
+            v3_log = "Wire transfer authorization: Dual-custody approval bypassed for client billing release"
+            v3_rule = "Policy 1.6 - Client Wire Release Controls"
+            v3_exp = "AegisPoint billing system released client credits without verified peer authorization."
+            v3_rec = "Review transfer audits and update dual-custody authorization profiles."
+            
+            v4_log = "Direct SQL select query executed on AegisPoint customer records database table"
+            v4_rule = "Policy 4.2 - Customer PII Query Restrictions"
+            v4_exp = "Direct SELECT query on AegisPoint customer records table was executed without authorized access control token."
+            v4_rec = "Audit client security layers and block direct command-line database access."
+        else:
+            emp_id = "EMP-3430"
+            emp_name = "Ross"
+            emp_email = "employee.ross@security-hq.com"
+            emp_dept = "IT Ops"
+            lead_name = "IT Manager"
+            lead_email = "manager@example.com"
+            company_name = "Security HQ"
+            score = 85
+            violations_by_dept = {"Finance": 1, "HR": 0, "IT": 2, "Sales": 1, "Ops": 0}
+            policy_filename = "Global_Security_Policy_v2.pdf"
+            
+            v1_log = "GitHub Commit push: Repo 'ross-analytics-dashboard', File: 'env.local', Secret: 'sk_live_...2ross'"
+            v1_rule = "Policy 3.2 - Open Access Key in Version Control"
+            v1_exp = f"An active access key 'sk_live_...2ross' was committed to a public Git repository."
+            v1_rec = "Rotate the access secret immediately and delete the GitHub commit log history."
+            
+            v2_log = "Employee ID: Ross, DepartmentType: Sales, Training Date: 12-Feb-26, Status: Incomplete"
+            v2_rule = "Policy 4.3 - Training Completion Requirements"
+            v2_exp = "Employee Ross's security training is marked 'Incomplete' after exceeding requirement."
+            v2_rec = "Immediately access the training portal and complete the module by the end of the current cycle."
+            
+            v3_log = "MFA bypassed for $250,000 wire transfer from account 90812347 to 882103"
+            v3_rule = "Policy 1.4 - Unauthenticated Financial Transactions"
+            v3_exp = "A financial wire transfer of $250,000 was executed without verified Multi-Factor Authentication."
+            v3_rec = "Verify transactions under dual-custody approval and attach transaction ticket credentials."
+            
+            v4_log = "Direct SQL select query executed on salary table from ip 192.168.1.42"
+            v4_rule = "Policy 4.1 - Unauthorised PII Access"
+            v4_exp = "Direct SELECT query on salary table was executed without authorized access control token."
+            v4_rec = "Restrict database access control layers and lock unauthorized direct console query options."
+
         violations = [
             {
                 "id": "VIO-demo-1",
-                "employee": "EMP-3430",
-                "department": "IT Ops",
-                "rule_violated": "Policy 3.2 - Open Access Key in Version Control",
-                "log_entry": "GitHub Commit push: Repo 'ross-analytics-dashboard', File: 'env.local', Secret: 'sk_live_...2ross'",
+                "employee": emp_id,
+                "department": emp_dept,
+                "rule_violated": v1_rule,
+                "log_entry": v1_log,
                 "severity": "Critical",
-                "explanation": "An active access key 'sk_live_...2ross' was committed to a public Git repository. High leak hazard.",
-                "recommendation": "Rotate the access secret immediately and delete the GitHub commit log history.",
+                "explanation": v1_exp,
+                "recommendation": v1_rec,
                 "status": "OPEN",
-                "assigned_employee_id": "EMP-3430",
-                "assigned_employee_name": "Ross",
+                "assigned_employee_id": emp_id,
+                "assigned_employee_name": emp_name,
                 "due_date": "2026-08-24",
                 "mitigation_evidence_url": None,
                 "mitigation_evidence_title": None,
@@ -1144,26 +1284,26 @@ def seed_data_if_empty(tenant_id: str = "tenant-security-hq"):
                     "last_escalated_at": None
                 },
                 "assigned_to": {
-                    "employee_id": "EMP-3430",
-                    "name": "Ross",
-                    "email": "employee.ross@security-hq.com",
-                    "department": "IT Ops",
-                    "department_lead_name": "IT Manager",
-                    "department_lead_email": "manager@example.com"
+                    "employee_id": emp_id,
+                    "name": emp_name,
+                    "email": emp_email,
+                    "department": emp_dept,
+                    "department_lead_name": lead_name,
+                    "department_lead_email": lead_email
                 }
             },
             {
                 "id": "VIO-demo-2",
-                "employee": "EMP-3430",
-                "department": "Sales & Marketing",
-                "rule_violated": "Policy 4.3 - Training Completion Requirements",
-                "log_entry": "Employee ID: Ross, DepartmentType: Sales, Training Date: 12-Feb-26, Status: Incomplete",
+                "employee": emp_id,
+                "department": emp_dept,
+                "rule_violated": v2_rule,
+                "log_entry": v2_log,
                 "severity": "High",
-                "explanation": "Employee Ross's security training is marked 'Incomplete' after exceeding the standard 60-day company requirement.",
-                "recommendation": "Immediately access the training portal and complete the module by the end of the current cycle.",
+                "explanation": v2_exp,
+                "recommendation": v2_rec,
                 "status": "IN_PROGRESS",
-                "assigned_employee_id": "EMP-3430",
-                "assigned_employee_name": "Ross",
+                "assigned_employee_id": emp_id,
+                "assigned_employee_name": emp_name,
                 "due_date": "2026-08-20",
                 "mitigation_evidence_url": None,
                 "mitigation_evidence_title": None,
@@ -1174,7 +1314,7 @@ def seed_data_if_empty(tenant_id: str = "tenant-security-hq"):
                 "verified_by": None,
                 "created_at": vio2_created_str,
                 "updated_at": (vio2_created + timedelta(minutes=5)).isoformat() + "Z",
-                "mitigation_notes": "Ross started training remediation.",
+                "mitigation_notes": f"{emp_name} started training remediation.",
                 "sla": {
                     "acknowledgment_due_at": vio2_ack_due,
                     "resolution_due_at": vio2_res_due,
@@ -1190,30 +1330,30 @@ def seed_data_if_empty(tenant_id: str = "tenant-security-hq"):
                     "last_escalated_at": (vio2_created + timedelta(hours=48)).isoformat() + "Z"
                 },
                 "assigned_to": {
-                    "employee_id": "EMP-3430",
-                    "name": "Ross",
-                    "email": "employee.ross@security-hq.com",
-                    "department": "Sales & Marketing",
-                    "department_lead_name": "Sales Manager",
-                    "department_lead_email": "sales-manager@example.com"
+                    "employee_id": emp_id,
+                    "name": emp_name,
+                    "email": emp_email,
+                    "department": emp_dept,
+                    "department_lead_name": lead_name,
+                    "department_lead_email": lead_email
                 }
             },
             {
                 "id": "VIO-demo-3",
-                "employee": "EMP-3430",
-                "department": "IT Ops",
-                "rule_violated": "Policy 1.4 - Unauthenticated Financial Transactions",
-                "log_entry": "MFA bypassed for $250,000 wire transfer from account 90812347 to 882103",
+                "employee": emp_id,
+                "department": emp_dept,
+                "rule_violated": v3_rule,
+                "log_entry": v3_log,
                 "severity": "High",
-                "explanation": "A financial wire transfer of $250,000 was executed without verified Multi-Factor Authentication.",
-                "recommendation": "Verify transactions under dual-custody approval and attach transaction ticket credentials.",
+                "explanation": v3_exp,
+                "recommendation": v3_rec,
                 "status": "PENDING_VERIFICATION",
-                "assigned_employee_id": "EMP-3430",
-                "assigned_employee_name": "Ross",
+                "assigned_employee_id": emp_id,
+                "assigned_employee_name": emp_name,
                 "due_date": "2026-08-18",
                 "mitigation_evidence_url": "https://tickets.company.com/SEC-882",
                 "mitigation_evidence_title": "Ticket SEC-882",
-                "employee_mitigation_notes": "Approved wire transfer under emergency CFO authorization. Ref ticket #SEC-882.",
+                "employee_mitigation_notes": "Approved transaction wire release under CFO emergency authorization.",
                 "reviewer_comments": None,
                 "submitted_for_verification_at": (vio3_created + timedelta(hours=1)).isoformat() + "Z",
                 "verified_at": None,
@@ -1236,34 +1376,34 @@ def seed_data_if_empty(tenant_id: str = "tenant-security-hq"):
                     "last_escalated_at": None
                 },
                 "assigned_to": {
-                    "employee_id": "EMP-3430",
-                    "name": "Ross",
-                    "email": "employee.ross@security-hq.com",
-                    "department": "IT Ops",
-                    "department_lead_name": "IT Manager",
-                    "department_lead_email": "manager@example.com"
+                    "employee_id": emp_id,
+                    "name": emp_name,
+                    "email": emp_email,
+                    "department": emp_dept,
+                    "department_lead_name": lead_name,
+                    "department_lead_email": lead_email
                 }
             },
             {
                 "id": "VIO-demo-4",
-                "employee": "EMP-3430",
-                "department": "Finance",
-                "rule_violated": "Policy 4.1 - Unauthorised PII Access",
-                "log_entry": "Direct SQL select query executed on salary table from ip 192.168.1.42",
+                "employee": emp_id,
+                "department": emp_dept,
+                "rule_violated": v4_rule,
+                "log_entry": v4_log,
                 "severity": "Low",
-                "explanation": "Direct SELECT query on salary table was executed without authorized access control token.",
-                "recommendation": "Restrict database access control layers and lock unauthorized direct console query options.",
+                "explanation": v4_exp,
+                "recommendation": v4_rec,
                 "status": "RESOLVED",
-                "assigned_employee_id": "EMP-3430",
-                "assigned_employee_name": "Ross",
+                "assigned_employee_id": emp_id,
+                "assigned_employee_name": emp_name,
                 "due_date": "2026-08-15",
                 "mitigation_evidence_url": "https://github.com/org/repo/pull/123",
                 "mitigation_evidence_title": "PR #123",
-                "employee_mitigation_notes": "Salary table access revoked for non-HR IPs. IP security rule merged in PR.",
+                "employee_mitigation_notes": "Database table credentials updated and IP security access list restricted.",
                 "reviewer_comments": "Verified PR change. Direct select logs restricted. Secure and resolved.",
                 "submitted_for_verification_at": (vio4_created + timedelta(days=2)).isoformat() + "Z",
                 "verified_at": (vio4_created + timedelta(days=3)).isoformat() + "Z",
-                "verified_by": "auditor.compliance@firm-wide.com",
+                "verified_by": lead_email,
                 "created_at": vio4_created_str,
                 "updated_at": (vio4_created + timedelta(days=3)).isoformat() + "Z",
                 "mitigation_notes": "",
@@ -1282,15 +1422,16 @@ def seed_data_if_empty(tenant_id: str = "tenant-security-hq"):
                     "last_escalated_at": None
                 },
                 "assigned_to": {
-                    "employee_id": "EMP-3430",
-                    "name": "Ross",
-                    "email": "employee.ross@security-hq.com",
-                    "department": "Finance",
-                    "department_lead_name": "Finance Lead",
-                    "department_lead_email": "finance.lead@company.com"
+                    "employee_id": emp_id,
+                    "name": emp_name,
+                    "email": emp_email,
+                    "department": emp_dept,
+                    "department_lead_name": lead_name,
+                    "department_lead_email": lead_email
                 }
             }
         ]
+        
         # Rewrite violation IDs and assignments to be tenant-specific
         suffix = tenant_id.replace("tenant-", "")
         for idx, v in enumerate(violations):
@@ -1313,45 +1454,23 @@ def seed_data_if_empty(tenant_id: str = "tenant-security-hq"):
                 
             v["fingerprint"] = make_violation_fingerprint(v)
             v["sanitized_evidence"] = extract_and_sanitize_evidence(v.get("log_entry", ""))
-            if tenant_id == "tenant-company-a":
-                v["assigned_employee_id"] = "EMP-A-01"
-                v["assigned_employee_name"] = "Bob"
-                v["assigned_to"] = {
-                    "employee_id": "EMP-A-01",
-                    "name": "Bob",
-                    "email": "employee.bob@company-a.com",
-                    "department": "IT",
-                    "department_lead_name": "Alice Manager",
-                    "department_lead_email": "hr.alice@company-a.com"
-                }
-            elif tenant_id == "tenant-company-b":
-                v["assigned_employee_id"] = "EMP-B-01"
-                v["assigned_employee_name"] = "David"
-                v["assigned_to"] = {
-                    "employee_id": "EMP-B-01",
-                    "name": "David",
-                    "email": "employee.david@company-b.com",
-                    "department": "IT",
-                    "department_lead_name": "Charlie Manager",
-                    "department_lead_email": "hr.charlie@company-b.com"
-                }
 
         audit_record = {
             "id": audit_id,
             "timestamp": timestamp,
-            "policy_filename": "Global_Security_Policy_v2.pdf",
+            "policy_filename": policy_filename,
             "log_filename": "production_auth_logs.csv",
-            "processed_policies": [{"filename": "Global_Security_Policy_v2.pdf", "size": 124500}],
+            "processed_policies": [{"filename": policy_filename, "size": 124500}],
             "processed_logs": [{"filename": "production_auth_logs.csv", "size": 95600}],
             "skipped_files": [],
             "metrics": {
-                "compliance_score": 85,
+                "compliance_score": score,
                 "risk_distribution": {"Low": 1, "Medium": 0, "High": 2, "Critical": 1},
-                "violations_by_department": {"Finance": 1, "HR": 0, "IT": 2, "Sales": 1, "Ops": 0},
-                "compliance_trend": [80, 81, 82, 83, 84, 85]
+                "violations_by_department": violations_by_dept,
+                "compliance_trend": [score - 5, score - 3, score - 2, score - 1, score, score]
             },
             "violations": violations,
-            "alert": {"triggered": True, "recipient": "auditor.compliance@firm-wide.com", "violation_count": 3, "message": "Demo Seeding Alerts Triggered."}
+            "alert": {"triggered": True, "recipient": lead_email, "violation_count": 3, "message": f"Demo Seeding Alerts Triggered for {company_name}."}
         }
         save_to_history(audit_record, tenant_id)
         
@@ -1361,8 +1480,8 @@ def seed_data_if_empty(tenant_id: str = "tenant-security-hq"):
                 "notification_id": f"NOTIF-SEED-{suffix}-1",
                 "violation_id": f"VIO-{suffix}-2",
                 "event_type": "SLA_CREATED",
-                "recipient_name": "Ross" if tenant_id == "tenant-security-hq" else ("Bob" if tenant_id == "tenant-company-a" else "David"),
-                "recipient_email": "employee.ross@security-hq.com" if tenant_id == "tenant-security-hq" else ("employee.bob@company-a.com" if tenant_id == "tenant-company-a" else "employee.david@company-b.com"),
+                "recipient_name": emp_name,
+                "recipient_email": emp_email,
                 "channel": "MOCK_EMAIL",
                 "status": "SENT",
                 "message": f"SLA Created: A new compliance violation VIO-{suffix}-2 has been logged.",
@@ -1372,8 +1491,8 @@ def seed_data_if_empty(tenant_id: str = "tenant-security-hq"):
                 "notification_id": f"NOTIF-SEED-{suffix}-2",
                 "violation_id": f"VIO-{suffix}-2",
                 "event_type": "SLA_WARNING_50",
-                "recipient_name": "Ross" if tenant_id == "tenant-security-hq" else ("Bob" if tenant_id == "tenant-company-a" else "David"),
-                "recipient_email": "employee.ross@security-hq.com" if tenant_id == "tenant-security-hq" else ("employee.bob@company-a.com" if tenant_id == "tenant-company-a" else "employee.david@company-b.com"),
+                "recipient_name": emp_name,
+                "recipient_email": emp_email,
                 "channel": "MOCK_EMAIL",
                 "status": "SENT",
                 "message": f"SLA Reminder: 50% of the resolution deadline for VIO-{suffix}-2 has elapsed.",
@@ -1383,8 +1502,8 @@ def seed_data_if_empty(tenant_id: str = "tenant-security-hq"):
                 "notification_id": f"NOTIF-SEED-{suffix}-3",
                 "violation_id": f"VIO-{suffix}-2",
                 "event_type": "SLA_WARNING_80",
-                "recipient_name": "Ross" if tenant_id == "tenant-security-hq" else ("Bob" if tenant_id == "tenant-company-a" else "David"),
-                "recipient_email": "employee.ross@security-hq.com" if tenant_id == "tenant-security-hq" else ("employee.bob@company-a.com" if tenant_id == "tenant-company-a" else "employee.david@company-b.com"),
+                "recipient_name": emp_name,
+                "recipient_email": emp_email,
                 "channel": "MOCK_EMAIL",
                 "status": "SENT",
                 "message": f"SLA Warning: 80% of the resolution deadline for VIO-{suffix}-2 has elapsed.",
@@ -1394,8 +1513,8 @@ def seed_data_if_empty(tenant_id: str = "tenant-security-hq"):
                 "notification_id": f"NOTIF-SEED-{suffix}-4",
                 "violation_id": f"VIO-{suffix}-2",
                 "event_type": "SLA_BREACHED",
-                "recipient_name": "Sales Manager" if tenant_id == "tenant-security-hq" else ("Alice Manager" if tenant_id == "tenant-company-a" else "Charlie Manager"),
-                "recipient_email": "sales-manager@example.com" if tenant_id == "tenant-security-hq" else ("hr.alice@company-a.com" if tenant_id == "tenant-company-a" else "hr.charlie@company-b.com"),
+                "recipient_name": lead_name,
+                "recipient_email": lead_email,
                 "channel": "MOCK_EMAIL",
                 "status": "SENT",
                 "message": f"SLA BREACHED: High-risk violation VIO-{suffix}-2 has missed its resolution SLA. Department Lead notified.",
@@ -1408,21 +1527,21 @@ def seed_data_if_empty(tenant_id: str = "tenant-security-hq"):
             {
                 "activity_id": f"ACT-demo-{suffix}-1",
                 "violation_id": f"VIO-{suffix}-2",
-                "actor_id": "employee.ross@security-hq.com" if tenant_id == "tenant-security-hq" else ("employee.bob@company-a.com" if tenant_id == "tenant-company-a" else "employee.david@company-b.com"),
-                "actor_name": "Ross" if tenant_id == "tenant-security-hq" else ("Bob" if tenant_id == "tenant-company-a" else "David"),
+                "actor_id": emp_email,
+                "actor_name": emp_name,
                 "actor_role": "EMPLOYEE",
                 "action": "START_MITIGATION",
                 "previous_status": "OPEN",
                 "new_status": "IN_PROGRESS",
-                "comment": f"{'Ross' if tenant_id == 'tenant-security-hq' else ('Bob' if tenant_id == 'tenant-company-a' else 'David')} started training remediation.",
+                "comment": f"{emp_name} started training remediation.",
                 "evidence_url": None,
                 "created_at": (vio2_created + timedelta(hours=5)).isoformat() + "Z"
             },
             {
                 "activity_id": f"ACT-demo-{suffix}-2",
                 "violation_id": f"VIO-{suffix}-3",
-                "actor_id": "employee.ross@security-hq.com" if tenant_id == "tenant-security-hq" else ("employee.bob@company-a.com" if tenant_id == "tenant-company-a" else "employee.david@company-b.com"),
-                "actor_name": "Ross" if tenant_id == "tenant-security-hq" else ("Bob" if tenant_id == "tenant-company-a" else "David"),
+                "actor_id": emp_email,
+                "actor_name": emp_name,
                 "actor_role": "EMPLOYEE",
                 "action": "SUBMIT_MITIGATION",
                 "previous_status": "IN_PROGRESS",
@@ -1434,20 +1553,20 @@ def seed_data_if_empty(tenant_id: str = "tenant-security-hq"):
             {
                 "activity_id": f"ACT-demo-{suffix}-3",
                 "violation_id": f"VIO-{suffix}-4",
-                "actor_id": "employee.ross@security-hq.com" if tenant_id == "tenant-security-hq" else ("employee.bob@company-a.com" if tenant_id == "tenant-company-a" else "employee.david@company-b.com"),
-                "actor_name": "Ross" if tenant_id == "tenant-security-hq" else ("Bob" if tenant_id == "tenant-company-a" else "David"),
+                "actor_id": emp_email,
+                "actor_name": emp_name,
                 "actor_role": "EMPLOYEE",
                 "action": "SUBMIT_MITIGATION",
                 "previous_status": "IN_PROGRESS",
                 "new_status": "PENDING_VERIFICATION",
-                "comment": "Salary table access revoked for non-HR IPs.",
+                "comment": "Database credential access restricted and local rules verified.",
                 "evidence_url": "https://github.com/org/repo/pull/123",
                 "created_at": (vio4_created + timedelta(days=2)).isoformat() + "Z"
             },
             {
                 "activity_id": f"ACT-demo-{suffix}-4",
                 "violation_id": f"VIO-{suffix}-4",
-                "actor_id": "auditor.compliance@firm-wide.com" if tenant_id == "tenant-security-hq" else ("hr.alice@company-a.com" if tenant_id == "tenant-company-a" else "hr.charlie@company-b.com"),
+                "actor_id": lead_email,
                 "actor_name": "HR Reviewer",
                 "actor_role": "HR",
                 "action": "VERIFIED_RESOLVED",
@@ -1464,7 +1583,7 @@ def seed_data_if_empty(tenant_id: str = "tenant-security-hq"):
 
 @app.on_event("startup")
 def startup_event():
-    tenants = ["tenant-security-hq", "tenant-company-a", "tenant-company-b"]
+    tenants = ["tenant-security-hq", "tenant-company-a", "tenant-company-b", "technova-demo", "aegispoint-demo"]
     for t in tenants:
         seed_data_if_empty(t)
         seed_policies_if_empty(t)
@@ -1725,7 +1844,7 @@ def review_violation(
     req: ReviewRequest,
     current_user: dict = Depends(get_current_user)
 ):
-    if current_user["role"] != "HR":
+    if not is_auditor(current_user):
         raise HTTPException(status_code=403, detail="Access denied: Only HR users can review violations.")
         
     tenant_id = current_user["tenant_id"]
@@ -1941,86 +2060,236 @@ def mask_ip(ip: str) -> str:
     return "xxx.xxx.xxx.xxx"
 
 MOCK_EMPLOYEES = [
+    {"employee_id": "EMP-TN-1042", "name": "Aarav Mehta", "email": "employee@technova-demo.com", "department": "Engineering"},
+    {"employee_id": "EMP-TN-1042", "name": "Aarav Mehta", "email": "employee.bob@company-a.com", "department": "Engineering"},
+    {"employee_id": "EMP-TN-1047", "name": "Priya Sharma", "email": "priya@technova-demo.com", "department": "Finance"},
+    {"employee_id": "EMP-TN-1051", "name": "Rohan Kapoor", "email": "rohan@technova-demo.com", "department": "Human Resources"},
+    {"employee_id": "EMP-TN-1063", "name": "Ananya Singh", "email": "ananya@technova-demo.com", "department": "Operations"},
+    {"employee_id": "EMP-TN-1078", "name": "Vikram Patel", "email": "vikram@technova-demo.com", "department": "IT"},
+    
+    {"employee_id": "EMP-AP-2011", "name": "Meera Nair", "email": "employee@aegispoint-demo.com", "department": "Security Operations"},
+    {"employee_id": "EMP-AP-2011", "name": "Meera Nair", "email": "employee.david@company-b.com", "department": "Security Operations"},
+    {"employee_id": "EMP-AP-2016", "name": "Kabir Malhotra", "email": "kabir@aegispoint-demo.com", "department": "Finance"},
+    {"employee_id": "EMP-AP-2024", "name": "Ishita Rao", "email": "ishita@aegispoint-demo.com", "department": "People Operations"},
+    {"employee_id": "EMP-AP-2031", "name": "Dev Arora", "email": "dev@aegispoint-demo.com", "department": "Client Services"},
+    {"employee_id": "EMP-AP-2040", "name": "Neha Iyer", "email": "neha@aegispoint-demo.com", "department": "Technology"},
+
     {"employee_id": "EMP-3430", "name": "Ross", "email": "employee.ross@security-hq.com", "department": "IT Ops"},
-    {"employee_id": "EMP-1002", "name": "Auditor", "email": "auditor.compliance@firm-wide.com", "department": "HR"},
-    {"employee_id": "EMP-8822", "name": "John Doe", "email": "john.doe@security-hq.com", "department": "Finance"},
-    {"employee_id": "EMP-4109", "name": "Alice Cooper", "email": "alice.cooper@security-hq.com", "department": "Sales"}
+    {"employee_id": "EMP-1002", "name": "Auditor", "email": "auditor.compliance@firm-wide.com", "department": "HR"}
 ]
 
 def seed_policies_if_empty(tenant_id: str = "tenant-security-hq"):
     policies = get_policies(tenant_id)
     if not policies:
-        policies = [
-            {
-                "policy_id": "POL-DPP-001",
-                "title": "Corporate Data Privacy Pledge",
-                "version": "DPP-2026-v2.1",
-                "effective_date": "2026-08-01",
-                "acknowledgment_due_date": "2026-08-31",
-                "document_url": "/uploads/policies/data-privacy-pledge-v2.1.pdf",
-                "document_sha256": "sha256-dfa89104b2b291c104e12c1b2c34d38e2194fbe9426ba29283e390c918a28741",
-                "is_active": True,
-                "created_at": "2026-08-01T00:00:00Z",
-                "content": """# Corporate Data Privacy Pledge (v2.1)
-
+        is_technova = tenant_id in ["technova-demo", "tenant-company-a"]
+        is_aegispoint = tenant_id in ["aegispoint-demo", "tenant-company-b"]
+        
+        if is_technova:
+            policies = [
+                {
+                    "policy_id": "POL-TN-001",
+                    "title": "Enterprise HR Compliance Policy",
+                    "version": "TN-2026-v1.0",
+                    "effective_date": "2026-08-01",
+                    "acknowledgment_due_date": "2026-08-31",
+                    "document_url": "/uploads/policies/enterprise-hr-compliance-policy.pdf",
+                    "document_sha256": "sha256-dfa89104b2b291c104e12c1b2c34d38e2194fbe9426ba29283e390c918a28741",
+                    "is_active": True,
+                    "created_at": "2026-08-01T00:00:00Z",
+                    "content": """# TechNova Technologies Enterprise HR Compliance Policy (v1.0)
+ 
 ## 1. Overview and Purpose
-This document outlines the strict guidelines governing the storage, usage, and sharing of personal identifiable information (PII) at Security-HQ. Every employee handling user information must pledge to protect it according to our standards.
-
-## 2. Customer Trust & Security
-We collect information only for lawful and system-functional requirements. Data must never be downloaded to unencrypted local machines or shared via unauthorized channels.
-
+This document outlines TechNova's policy governing standard HR compliance and workforce regulations. All employees are required to acknowledge and adhere to these guidelines.
+ 
+## 2. Professional Standards
+TechNova is committed to providing a safe, inclusive, and professional environment. Safe operation of systems and handling of employee records are critical components of compliance.
+ 
 ## 3. Mandatory Protocols
-- **Data Minimization:** Only request the specific properties necessary to perform user actions.
-- **Session Control:** Ensure terminal screens are locked automatically after 5 minutes of idle time.
-- **Secure Transport:** Ensure TLS 1.3 is forced for all API requests transmitting confidential payloads.
-
+- **Data Privacy:** Employee data must be masked when displaying evidence files to non-authorized roles.
+- **SLA Guidelines:** Compliance violations must be acknowledged within 4 hours and resolved within 48 hours for critical/high threats.
+- **Secure Handling:** Standard credentials must never be embedded in plaintext version control files.
+ 
 ## 4. Enforcement and Violations
 Breaches will lead to automatic system revocation, security investigation, and potential contract termination. Thank you for your commitment to client privacy and organizational integrity.
 """,
-                "tenant_id": tenant_id
-            },
-            {
-                "policy_id": "POL-AUP-002",
-                "title": "Acceptable Use Policy",
-                "version": "AUP-2026-v1.0",
-                "effective_date": "2026-08-10",
-                "acknowledgment_due_date": "2026-08-15",
-                "document_url": "/uploads/policies/acceptable-use-policy-v1.0.pdf",
-                "document_sha256": "sha256-b0e77d2d3a3f5f3e5b38d38e2194fbe9426ba29283e390c918a28741b0e77d2d",
-                "is_active": True,
-                "created_at": "2026-08-10T00:00:00Z",
-                "content": """# Acceptable Use Policy (v1.0)
-
+                    "tenant_id": tenant_id
+                },
+                {
+                    "policy_id": "POL-TN-002",
+                    "title": "Acceptable Use and Code of Conduct",
+                    "version": "TN-2026-v1.1",
+                    "effective_date": "2026-08-10",
+                    "acknowledgment_due_date": "2026-08-15",
+                    "document_url": "/uploads/policies/acceptable-use-and-code-of-conduct.pdf",
+                    "document_sha256": "sha256-b0e77d2d3a3f5f3e5b38d38e2194fbe9426ba29283e390c918a28741b0e77d2d",
+                    "is_active": True,
+                    "created_at": "2026-08-10T00:00:00Z",
+                    "content": """# TechNova Technologies Acceptable Use and Code of Conduct (v1.1)
+ 
 ## 1. Introduction
-The systems, networks, and computing devices provided by Security-HQ are intended for business operations. Unauthorized utilization of these assets is prohibited.
-
+The systems, networks, and computing devices provided by TechNova are intended for business operations. Unauthorized utilization of these assets is prohibited.
+ 
 ## 2. Prohibited Behaviors
 - Storing unencrypted credentials in public github commits.
 - Accessing peer assets without authorized role elevation.
 - Running heavy data scraping scripts that block production networks.
-
-## 3. Safe Usage
-Employees must report potential breaches to security-alerts@security-hq.com immediately. System audits are conducted weekly to verify configuration adherence.
 """,
-                "tenant_id": tenant_id
-            }
-        ]
+                    "tenant_id": tenant_id
+                }
+            ]
+        elif is_aegispoint:
+            policies = [
+                {
+                    "policy_id": "POL-AP-001",
+                    "title": "Workforce Security and Access Policy",
+                    "version": "AP-2026-v2.0",
+                    "effective_date": "2026-08-01",
+                    "acknowledgment_due_date": "2026-08-31",
+                    "document_url": "/uploads/policies/workforce-security-and-access-policy.pdf",
+                    "document_sha256": "sha256-dfa89104b2b291c104e12c1b2c34d38e2194fbe9426ba29283e390c918a28741",
+                    "is_active": True,
+                    "created_at": "2026-08-01T00:00:00Z",
+                    "content": """# AegisPoint Systems Workforce Security and Access Policy (v2.0)
+ 
+## 1. Overview and Purpose
+This document outlines AegisPoint's strict guidelines governing the storage, usage, and sharing of personal identifiable information (PII) and system access logs.
+ 
+## 2. Customer Trust & Security
+We collect information only for lawful and system-functional requirements. Data must never be downloaded to unencrypted local machines or shared via unauthorized channels.
+ 
+## 3. Mandatory Protocols
+- **Data Minimization:** Only request the specific properties necessary to perform user actions.
+- **Session Control:** Ensure terminal screens are locked automatically after 5 minutes of idle time.
+- **Secure Transport:** Ensure TLS 1.3 is forced for all API requests transmitting confidential payloads.
+ 
+## 4. Enforcement and Violations
+Breaches will lead to automatic system revocation, security investigation, and potential contract termination. Thank you for your commitment to client privacy and organizational integrity.
+""",
+                    "tenant_id": tenant_id
+                },
+                {
+                    "policy_id": "POL-AP-002",
+                    "title": "Information Security Standards Policy",
+                    "version": "AP-2026-v1.0",
+                    "effective_date": "2026-08-10",
+                    "acknowledgment_due_date": "2026-08-15",
+                    "document_url": "/uploads/policies/information-security-standards-policy.pdf",
+                    "document_sha256": "sha256-b0e77d2d3a3f5f3e5b38d38e2194fbe9426ba29283e390c918a28741b0e77d2d",
+                    "is_active": True,
+                    "created_at": "2026-08-10T00:00:00Z",
+                    "content": """# AegisPoint Systems Information Security Standards Policy (v1.0)
+ 
+## 1. Introduction
+The systems, networks, and computing devices provided by AegisPoint are intended for business operations. Unauthorized utilization of these assets is prohibited.
+ 
+## 2. Prohibited Behaviors
+- Storing unencrypted credentials in public github commits.
+- Accessing peer assets without authorized role elevation.
+- Running heavy data scraping scripts that block production networks.
+""",
+                    "tenant_id": tenant_id
+                }
+            ]
+        else:
+            policies = [
+                {
+                    "policy_id": "POL-DPP-001",
+                    "title": "Corporate Data Privacy Pledge",
+                    "version": "DPP-2026-v2.1",
+                    "effective_date": "2026-08-01",
+                    "acknowledgment_due_date": "2026-08-31",
+                    "document_url": "/uploads/policies/data-privacy-pledge-v2.1.pdf",
+                    "document_sha256": "sha256-dfa89104b2b291c104e12c1b2c34d38e2194fbe9426ba29283e390c918a28741",
+                    "is_active": True,
+                    "created_at": "2026-08-01T00:00:00Z",
+                    "content": """# Corporate Data Privacy Pledge (v2.1)
+ 
+## 1. Overview and Purpose
+This document outlines the strict guidelines governing the storage, usage, and sharing of personal identifiable information (PII) at Security-HQ. Every employee handling user information must pledge to protect it according to our standards.
+ 
+## 2. Customer Trust & Security
+We collect information only for lawful and system-functional requirements. Data must never be downloaded to unencrypted local machines or shared via unauthorized channels.
+ 
+## 3. Mandatory Protocols
+- **Data Minimization:** Only request the specific properties necessary to perform user actions.
+- **Session Control:** Ensure terminal screens are locked automatically after 5 minutes of idle time.
+- **Secure Transport:** Ensure TLS 1.3 is forced for all API requests transmitting confidential payloads.
+ 
+## 4. Enforcement and Violations
+Breaches will lead to automatic system revocation, security investigation, and potential contract termination. Thank you for your commitment to client privacy and organizational integrity.
+""",
+                    "tenant_id": tenant_id
+                },
+                {
+                    "policy_id": "POL-AUP-002",
+                    "title": "Acceptable Use Policy",
+                    "version": "AUP-2026-v1.0",
+                    "effective_date": "2026-08-10",
+                    "acknowledgment_due_date": "2026-08-15",
+                    "document_url": "/uploads/policies/acceptable-use-policy-v1.0.pdf",
+                    "document_sha256": "sha256-b0e77d2d3a3f5f3e5b38d38e2194fbe9426ba29283e390c918a28741b0e77d2d",
+                    "is_active": True,
+                    "created_at": "2026-08-10T00:00:00Z",
+                    "content": """# Acceptable Use Policy (v1.0)
+ 
+## 1. Introduction
+The systems, networks, and computing devices provided by Security-HQ are intended for business operations. Unauthorized utilization of these assets is prohibited.
+ 
+## 2. Prohibited Behaviors
+- Storing unencrypted credentials in public github commits.
+- Accessing peer assets without authorized role elevation.
+- Running heavy data scraping scripts that block production networks.
+""",
+                    "tenant_id": tenant_id
+                }
+            ]
         save_policies(policies, tenant_id)
 
     acks = get_acknowledgments(tenant_id)
     if not acks:
+        is_technova = tenant_id in ["technova-demo", "tenant-company-a"]
+        is_aegispoint = tenant_id in ["aegispoint-demo", "tenant-company-b"]
+        
+        if is_technova:
+            emp_id_ack = "EMP-TN-1042"
+            emp_name_ack = "Aarav Mehta"
+            emp_email_ack = "employee@technova-demo.com"
+            emp_dept_ack = "Engineering"
+            pol1_id = "POL-TN-001"
+            pol1_version = "TN-2026-v1.0"
+            pol2_id = "POL-TN-002"
+            pol2_version = "TN-2026-v1.1"
+        elif is_aegispoint:
+            emp_id_ack = "EMP-AP-2011"
+            emp_name_ack = "Meera Nair"
+            emp_email_ack = "employee@aegispoint-demo.com"
+            emp_dept_ack = "Security Operations"
+            pol1_id = "POL-AP-001"
+            pol1_version = "AP-2026-v2.0"
+            pol2_id = "POL-AP-002"
+            pol2_version = "AP-2026-v1.0"
+        else:
+            emp_id_ack = "EMP-1002"
+            emp_name_ack = "Auditor"
+            emp_email_ack = "auditor.compliance@firm-wide.com"
+            emp_dept_ack = "HR"
+            pol1_id = "POL-DPP-001"
+            pol1_version = "DPP-2026-v2.1"
+            pol2_id = "POL-AUP-002"
+            pol2_version = "AUP-2026-v1.0"
+
         acks = [
             {
                 "acknowledgment_id": "ACK-2026-0001",
-                "policy_id": "POL-DPP-001",
-                "policy_version": "DPP-2026-v2.1",
+                "policy_id": pol1_id,
+                "policy_version": pol1_version,
                 "policy_document_sha256": "sha256-dfa89104b2b291c104e12c1b2c34d38e2194fbe9426ba29283e390c918a28741",
-                "employee_id": "EMP-1002" if tenant_id == "tenant-security-hq" else "EMP-A-01",
-                "employee_name": "Auditor" if tenant_id == "tenant-security-hq" else "Bob",
-                "employee_email": "auditor.compliance@firm-wide.com" if tenant_id == "tenant-security-hq" else "employee.bob@company-a.com",
-                "department": "HR" if tenant_id == "tenant-security-hq" else "IT",
+                "employee_id": emp_id_ack,
+                "employee_name": emp_name_ack,
+                "employee_email": emp_email_ack,
+                "department": emp_dept_ack,
                 "signature_type": "TYPED_NAME",
-                "typed_signature": "Auditor" if tenant_id == "tenant-security-hq" else "Bob",
+                "typed_signature": emp_name_ack,
                 "electronic_consent": True,
                 "acknowledged_reading": True,
                 "signed_at": "2026-08-15T12:00:00Z",
@@ -2033,15 +2302,15 @@ Employees must report potential breaches to security-alerts@security-hq.com imme
             },
             {
                 "acknowledgment_id": "ACK-2026-0002",
-                "policy_id": "POL-AUP-002",
-                "policy_version": "AUP-2026-v1.0",
+                "policy_id": pol2_id,
+                "policy_version": pol2_version,
                 "policy_document_sha256": "sha256-b0e77d2d3a3f5f3e5b38d38e2194fbe9426ba29283e390c918a28741b0e77d2d",
-                "employee_id": "EMP-3430" if tenant_id == "tenant-security-hq" else "EMP-A-01",
-                "employee_name": "Ross" if tenant_id == "tenant-security-hq" else "Bob",
-                "employee_email": "employee.ross@security-hq.com" if tenant_id == "tenant-security-hq" else "employee.bob@company-a.com",
-                "department": "IT Ops" if tenant_id == "tenant-security-hq" else "IT",
+                "employee_id": emp_id_ack,
+                "employee_name": emp_name_ack,
+                "employee_email": emp_email_ack,
+                "department": emp_dept_ack,
                 "signature_type": "TYPED_NAME",
-                "typed_signature": "Ross" if tenant_id == "tenant-security-hq" else "Bob",
+                "typed_signature": emp_name_ack,
                 "electronic_consent": True,
                 "acknowledged_reading": True,
                 "signed_at": "2026-08-12T14:30:00Z",
@@ -2057,13 +2326,29 @@ Employees must report potential breaches to security-alerts@security-hq.com imme
 
     trail = get_policy_audit_trail(tenant_id)
     if not trail:
+        is_technova = tenant_id in ["technova-demo", "tenant-company-a"]
+        is_aegispoint = tenant_id in ["aegispoint-demo", "tenant-company-b"]
+        
+        if is_technova:
+            emp_email_ack = "employee@technova-demo.com"
+            pol1_version = "TN-2026-v1.0"
+            pol2_version = "TN-2026-v1.1"
+        elif is_aegispoint:
+            emp_email_ack = "employee@aegispoint-demo.com"
+            pol1_version = "AP-2026-v2.0"
+            pol2_version = "AP-2026-v1.0"
+        else:
+            emp_email_ack = "auditor.compliance@firm-wide.com"
+            pol1_version = "DPP-2026-v2.1"
+            pol2_version = "AUP-2026-v1.0"
+
         trail = [
             {
                 "event_id": "EVT-MOCK-1",
                 "acknowledgment_id": "ACK-2026-0001",
-                "actor_id": "auditor.compliance@firm-wide.com" if tenant_id == "tenant-security-hq" else "employee.bob@company-a.com",
+                "actor_id": emp_email_ack,
                 "action": "POLICY_SIGNED",
-                "policy_version": "DPP-2026-v2.1",
+                "policy_version": pol1_version,
                 "document_sha256": "sha256-dfa89104b2b291c104e12c1b2c34d38e2194fbe9426ba29283e390c918a28741",
                 "server_timestamp": "2026-08-15T12:00:00Z",
                 "source_ip": "203.0.113.123",
@@ -2073,9 +2358,9 @@ Employees must report potential breaches to security-alerts@security-hq.com imme
             {
                 "event_id": "EVT-MOCK-2",
                 "acknowledgment_id": "ACK-2026-0002",
-                "actor_id": "employee.ross@security-hq.com" if tenant_id == "tenant-security-hq" else "employee.bob@company-a.com",
+                "actor_id": emp_email_ack,
                 "action": "POLICY_SIGNED",
-                "policy_version": "AUP-2026-v1.0",
+                "policy_version": pol2_version,
                 "document_sha256": "sha256-b0e77d2d3a3f5f3e5b38d38e2194fbe9426ba29283e390c918a28741b0e77d2d",
                 "server_timestamp": "2026-08-12T14:30:00Z",
                 "source_ip": "203.0.113.88",
@@ -2291,7 +2576,7 @@ def get_receipt(acknowledgment_id: str, current_user: dict = Depends(get_current
 
 @app.get("/api/hr/acknowledgments")
 def get_hr_acknowledgments(current_user: dict = Depends(get_current_user)):
-    if current_user["role"] != "HR":
+    if not is_auditor(current_user):
         raise HTTPException(status_code=403, detail="HR role required")
         
     tenant_id = current_user["tenant_id"]
@@ -2304,10 +2589,9 @@ def get_hr_acknowledgments(current_user: dict = Depends(get_current_user)):
     # Select Mock employees list based on tenant to be clean
     tenant_employees = [
         emp for emp in MOCK_EMPLOYEES 
-        if (tenant_id == "tenant-security-hq" and emp["email"].endswith("@security-hq.com")) or
-           (tenant_id == "tenant-company-a" and emp["email"].endswith("@company-a.com")) or
-           (tenant_id == "tenant-company-b" and emp["email"].endswith("@company-b.com")) or
-           emp["email"] == "auditor.compliance@firm-wide.com"
+        if (tenant_id in ["technova-demo", "tenant-company-a"] and (emp["email"].endswith("@technova-demo.com") or emp["email"].endswith("@company-a.com"))) or
+           (tenant_id in ["aegispoint-demo", "tenant-company-b"] and (emp["email"].endswith("@aegispoint-demo.com") or emp["email"].endswith("@company-b.com"))) or
+           (tenant_id == "tenant-security-hq" and emp["email"].endswith("@security-hq.com"))
     ]
     if not tenant_employees:
         tenant_employees = MOCK_EMPLOYEES
@@ -2359,7 +2643,7 @@ def get_hr_acknowledgments(current_user: dict = Depends(get_current_user)):
 
 @app.get("/api/hr/acknowledgments/{acknowledgment_id}")
 def get_hr_acknowledgment_detail(acknowledgment_id: str, current_user: dict = Depends(get_current_user)):
-    if current_user["role"] != "HR":
+    if not is_auditor(current_user):
         raise HTTPException(status_code=403, detail="HR role required")
         
     tenant_id = current_user["tenant_id"]
@@ -2377,7 +2661,7 @@ def get_hr_acknowledgment_detail(acknowledgment_id: str, current_user: dict = De
 
 @app.post("/api/hr/policies/{policy_id}/send-reminders")
 def send_reminders(policy_id: str, current_user: dict = Depends(get_current_user)):
-    if current_user["role"] != "HR":
+    if not is_auditor(current_user):
         raise HTTPException(status_code=403, detail="HR role required")
         
     tenant_id = current_user["tenant_id"]
@@ -2764,7 +3048,7 @@ def get_violation_sla(violation_id: str, current_user: dict = Depends(get_curren
     if not target_vio:
         raise HTTPException(status_code=404, detail="Violation not found")
         
-    if current_user["role"] != "HR" and target_vio.get("assigned_to", {}).get("email") != current_user["email"]:
+    if not is_auditor(current_user) and target_vio.get("assigned_to", {}).get("email") != current_user["email"]:
         raise HTTPException(status_code=403, detail="Access denied")
         
     now_utc = datetime.utcnow()
@@ -2781,7 +3065,7 @@ def get_violation_escalations(violation_id: str, current_user: dict = Depends(ge
 
 @app.post("/api/hr/violations/{violation_id}/acknowledge")
 def acknowledge_sla_violation(violation_id: str, current_user: dict = Depends(get_current_user)):
-    if current_user["role"] != "HR":
+    if not is_auditor(current_user):
         raise HTTPException(status_code=403, detail="HR permissions required")
         
     tenant_id = current_user["tenant_id"]
@@ -2818,7 +3102,7 @@ def acknowledge_sla_violation(violation_id: str, current_user: dict = Depends(ge
 
 @app.post("/api/hr/violations/{violation_id}/pause-sla")
 def pause_sla(violation_id: str, current_user: dict = Depends(get_current_user)):
-    if current_user["role"] != "HR":
+    if not is_auditor(current_user):
         raise HTTPException(status_code=403, detail="HR permissions required")
         
     tenant_id = current_user["tenant_id"]
@@ -2855,7 +3139,7 @@ def pause_sla(violation_id: str, current_user: dict = Depends(get_current_user))
 
 @app.post("/api/hr/violations/{violation_id}/resume-sla")
 def resume_sla(violation_id: str, current_user: dict = Depends(get_current_user)):
-    if current_user["role"] != "HR":
+    if not is_auditor(current_user):
         raise HTTPException(status_code=403, detail="HR permissions required")
         
     tenant_id = current_user["tenant_id"]
@@ -2905,7 +3189,7 @@ def resume_sla(violation_id: str, current_user: dict = Depends(get_current_user)
 
 @app.post("/api/hr/violations/{violation_id}/manual-escalate")
 def manual_escalate(violation_id: str, req: ManualEscalateRequest, current_user: dict = Depends(get_current_user)):
-    if current_user["role"] != "HR":
+    if not is_auditor(current_user):
         raise HTTPException(status_code=403, detail="HR permissions required")
         
     tenant_id = current_user["tenant_id"]
@@ -2952,13 +3236,13 @@ def manual_escalate(violation_id: str, req: ManualEscalateRequest, current_user:
 
 @app.get("/api/hr/sla-settings")
 def get_sla_settings_endpoint(current_user: dict = Depends(get_current_user)):
-    if current_user["role"] != "HR":
+    if not is_auditor(current_user):
         raise HTTPException(status_code=403, detail="HR permissions required")
     return get_sla_settings(current_user["tenant_id"])
 
 @app.patch("/api/hr/sla-settings")
 def update_sla_settings_endpoint(settings_update: SLASettingsUpdate, current_user: dict = Depends(get_current_user)):
-    if current_user["role"] != "HR":
+    if not is_auditor(current_user):
         raise HTTPException(status_code=403, detail="HR permissions required")
         
     tenant_id = current_user["tenant_id"]
@@ -2986,7 +3270,7 @@ def update_sla_settings_endpoint(settings_update: SLASettingsUpdate, current_use
 
 @app.post("/api/hr/run-sla-check")
 def run_sla_check_endpoint(current_user: dict = Depends(get_current_user)):
-    if current_user["role"] != "HR":
+    if not is_auditor(current_user):
         raise HTTPException(status_code=403, detail="HR permissions required")
     now_utc = datetime.utcnow()
     check_and_process_slas(now_utc, current_user["tenant_id"])

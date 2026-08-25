@@ -817,13 +817,23 @@ function DetailsModal({ v, onClose, severityColors, handleAssignOwner }) {
 function AssignOwnerModal({ v, onClose, onSubmit }) {
   const stopPropagation = (e) => e.stopPropagation();
 
-  // Simulated list of enterprise employees
-  const employees = [
-    { id: 'EMP-3430', name: 'Ross Ross', email: 'employee.ross@security-hq.com', dept: 'IT' },
-    { id: 'EMP-A-01', name: 'Bob Smith', email: 'employee.bob@company-a.com', dept: 'IT' },
-    { id: 'EMP-B-01', name: 'David Jones', email: 'employee.david@company-b.com', dept: 'Sales' },
-    { id: 'EMP-1002', name: 'Alice HR', email: 'hr.alice@company-a.com', dept: 'HR' },
-    { id: 'EMP-1003', name: 'Charlie HR', email: 'hr.charlie@company-b.com', dept: 'HR' }
+  const isTechnova = v?.tenant_id === 'technova-demo' || v?.tenant_id === 'tenant-company-a';
+  const isAegispoint = v?.tenant_id === 'aegispoint-demo' || v?.tenant_id === 'tenant-company-b';
+
+  const employees = isTechnova ? [
+    { id: 'EMP-TN-1042', name: 'Aarav Mehta', email: 'employee@technova-demo.com', dept: 'Engineering' },
+    { id: 'EMP-TN-1047', name: 'Priya Sharma', email: 'priya@technova-demo.com', dept: 'Finance' },
+    { id: 'EMP-TN-1051', name: 'Rohan Kapoor', email: 'rohan@technova-demo.com', dept: 'Human Resources' },
+    { id: 'EMP-TN-1063', name: 'Ananya Singh', email: 'ananya@technova-demo.com', dept: 'Operations' },
+    { id: 'EMP-TN-1078', name: 'Vikram Patel', email: 'vikram@technova-demo.com', dept: 'IT' }
+  ] : isAegispoint ? [
+    { id: 'EMP-AP-2011', name: 'Meera Nair', email: 'employee@aegispoint-demo.com', dept: 'Security Operations' },
+    { id: 'EMP-AP-2016', name: 'Kabir Malhotra', email: 'kabir@aegispoint-demo.com', dept: 'Finance' },
+    { id: 'EMP-AP-2024', name: 'Ishita Rao', email: 'ishita@aegispoint-demo.com', dept: 'People Operations' },
+    { id: 'EMP-AP-2031', name: 'Dev Arora', email: 'dev@aegispoint-demo.com', dept: 'Client Services' },
+    { id: 'EMP-AP-2040', name: 'Neha Iyer', email: 'neha@aegispoint-demo.com', dept: 'Technology' }
+  ] : [
+    { id: 'EMP-3430', name: 'Ross Ross', email: 'employee.ross@security-hq.com', dept: 'IT Ops' }
   ];
 
   return (
