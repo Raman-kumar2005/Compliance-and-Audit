@@ -210,8 +210,3 @@ Suggested demo sequence:
 This project is released under the [MIT License](LICENSE).
 
 ---
-
-## 👤 Author & Portfolio
-
-- **Developer**: Raman Kumar (`Raman-kumar2005`)
-- **Repository**: [https://github.com/Raman-kumar2005/Compliance-and-Audit](https://github.com/Raman-kumar2005/Compliance-and-Audit)
