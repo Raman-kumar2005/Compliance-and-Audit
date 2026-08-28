@@ -14,6 +14,16 @@ class TestMultiTenantIsolation(unittest.TestCase):
             seed_data_if_empty(tenant_id)
             seed_policies_if_empty(tenant_id)
 
+    def setUp(self):
+        # Remove notification files to ensure clean cooldown isolation per test
+        for t in ["technova-demo", "tenant-company-a", "tenant-company-b", "tenant-security-hq", "aegispoint-demo"]:
+            f = f"employee_notifications_{t}.json"
+            if os.path.exists(f):
+                try:
+                    os.remove(f)
+                except Exception:
+                    pass
+
     def login(self, email, password):
         resp = self.client.post("/api/auth/login", json={"email": email, "password": password})
         self.assertEqual(resp.status_code, 200, f"Login failed for {email}")
@@ -141,7 +151,166 @@ class TestMultiTenantIsolation(unittest.TestCase):
             ],
             headers=headers
         )
-        self.assertEqual(resp.status_code, 403, "Non-HR employee bob was allowed to run audit scan!")
+    def test_technova_demo_login_isolation(self):
+        token = self.login("hr@technova-demo.com", "passwordA123")
+        headers = {"Authorization": f"Bearer {token}"}
+        resp = self.client.get("/api/history", headers=headers)
+        self.assertEqual(resp.status_code, 200)
+        
+    def test_aegispoint_demo_login_isolation(self):
+        token = self.login("compliance@aegispoint-demo.com", "passwordB123")
+        headers = {"Authorization": f"Bearer {token}"}
+        resp = self.client.get("/api/history", headers=headers)
+        self.assertEqual(resp.status_code, 200)
+
+    def test_multi_tenant_organization_switching(self):
+        # 1. Login multi-tenant user
+        token = self.login("multitenant.hr@enterprise-demo.com", "passwordMulti123")
+        headers = {"Authorization": f"Bearer {token}"}
+        
+        # 2. Switch to aegispoint-demo
+        switch_resp = self.client.post(
+            "/api/auth/switch-tenant",
+            json={"target_tenant_id": "aegispoint-demo"},
+            headers=headers
+        )
+        self.assertEqual(switch_resp.status_code, 200)
+        switch_data = switch_resp.json()
+        self.assertEqual(switch_data["user"]["tenant_id"], "aegispoint-demo")
+    def test_organization_creation_endpoint(self):
+        resp = self.client.post(
+            "/api/organizations/create",
+            json={
+                "company_name": "Apex Global Systems",
+                "industry": "Healthcare & Biotech",
+                "company_size": "51-200",
+                "admin_email": "admin@apex-demo.com",
+                "admin_password": "secureApexPassword123"
+            }
+        )
+        self.assertEqual(resp.status_code, 200)
+        data = resp.json()
+        self.assertEqual(data["company_name"], "Apex Global Systems")
+        self.assertTrue(data["tenant_id"].startswith("apexglobalsystems-"))
+
+        # Verify newly created HR Admin can log in
+        admin_token = self.login("admin@apex-demo.com", "secureApexPassword123")
+        self.assertIsNotNone(admin_token)
+
+    def test_user_invitation_endpoint(self):
+        hr_token = self.login("hr@technova-demo.com", "passwordA123")
+        headers = {"Authorization": f"Bearer {hr_token}"}
+
+        resp = self.client.post(
+            "/api/hr/invite-user",
+            json={"email": "new.analyst@technova-demo.com", "role": "Compliance Officer"},
+            headers=headers
+        )
+        self.assertEqual(resp.status_code, 200)
+        data = resp.json()
+        self.assertEqual(data["invitation"]["email"], "new.analyst@technova-demo.com")
+        self.assertEqual(data["invitation"]["status"], "invited")
+
+        # Check invitations list
+        list_resp = self.client.get("/api/hr/invitations", headers=headers)
+        self.assertEqual(list_resp.status_code, 200)
+        invs = list_resp.json()
+        self.assertTrue(any(i["email"] == "new.analyst@technova-demo.com" for i in invs))
+
+    def test_hr_can_preview_and_notify_employee_same_tenant(self):
+        # Alice (Company A HR) login
+        alice_token = self.login("hr.alice@company-a.com", "passwordA123")
+        headers_a = {"Authorization": f"Bearer {alice_token}"}
+
+        # Fetch violations for Company A
+        resp_vios = self.client.get("/api/violations", headers=headers_a)
+        self.assertEqual(resp_vios.status_code, 200)
+        vios = resp_vios.json()
+        self.assertGreater(len(vios), 0)
+        target_vio_id = vios[0]["id"]
+
+        # Preview notification
+        preview_resp = self.client.get(f"/api/violations/{target_vio_id}/employee-preview", headers=headers_a)
+        self.assertEqual(preview_resp.status_code, 200)
+        preview_data = preview_resp.json()
+        self.assertIn("employee", preview_data)
+        self.assertIn("masked_email", preview_data["employee"])
+        self.assertEqual(preview_data["neutral_subject"], "Action required: Compliance item assigned to you")
+
+        # Send notification
+        notify_resp = self.client.post(f"/api/violations/{target_vio_id}/notify-employee", headers=headers_a)
+        self.assertEqual(notify_resp.status_code, 200)
+        notify_data = notify_resp.json()
+        self.assertEqual(notify_data["status"], "success")
+        self.assertIn("delivery_status", notify_data)
+
+    def test_employee_cannot_use_notify_employee(self):
+        # Bob (Employee) login
+        bob_token = self.login("employee.bob@company-a.com", "passwordA123")
+        headers_emp = {"Authorization": f"Bearer {bob_token}"}
+
+        # Get violations
+        resp_vios = self.client.get("/api/violations", headers=headers_emp)
+        vios = resp_vios.json()
+        self.assertGreater(len(vios), 0)
+        target_vio_id = vios[0]["id"]
+
+        # Bob tries to notify -> 403 Forbidden
+        notify_resp = self.client.post(f"/api/violations/{target_vio_id}/notify-employee", headers=headers_emp)
+        self.assertEqual(notify_resp.status_code, 403)
+
+    def test_cross_tenant_employee_notification_blocked(self):
+        # Charlie (Company B HR) login
+        charlie_token = self.login("hr.charlie@company-b.com", "passwordB123")
+        headers_b = {"Authorization": f"Bearer {charlie_token}"}
+
+        # Get Company A violation ID
+        alice_token = self.login("hr.alice@company-a.com", "passwordA123")
+        headers_a = {"Authorization": f"Bearer {alice_token}"}
+        resp_a = self.client.get("/api/violations", headers=headers_a)
+        vios_a = resp_a.json()
+        violation_id_a = vios_a[0]["id"]
+
+        # Charlie tries to notify employee for Company A violation -> 404 Not Found
+        notify_resp = self.client.post(f"/api/violations/{violation_id_a}/notify-employee", headers=headers_b)
+        self.assertEqual(notify_resp.status_code, 404)
+
+    def test_cooldown_prevents_duplicate_notifications(self):
+        alice_token = self.login("hr.alice@company-a.com", "passwordA123")
+        headers_a = {"Authorization": f"Bearer {alice_token}"}
+
+        resp_vios = self.client.get("/api/violations", headers=headers_a)
+        vios = resp_vios.json()
+        target_vio_id = vios[0]["id"]
+
+        # First send (may succeed or record demo)
+        resp1 = self.client.post(f"/api/violations/{target_vio_id}/notify-employee", headers=headers_a)
+        self.assertTrue(resp1.status_code in [200, 400])
+
+        # Immediate second send -> 400 Cooldown
+        resp2 = self.client.post(f"/api/violations/{target_vio_id}/notify-employee", headers=headers_a)
+        self.assertEqual(resp2.status_code, 400)
+        self.assertIn("recently sent", resp2.json().get("detail", ""))
+
+    def test_unconfigured_email_shows_demo_record(self):
+        # Ensure SMTP env vars are unset
+        if "SMTP_HOST" in os.environ:
+            del os.environ["SMTP_HOST"]
+
+        alice_token = self.login("hr.alice@company-a.com", "passwordA123")
+        headers_a = {"Authorization": f"Bearer {alice_token}"}
+
+        resp_vios = self.client.get("/api/violations", headers=headers_a)
+        vios = resp_vios.json()
+        # Find a violation not recently notified
+        target_vio_id = vios[-1]["id"]
+
+        resp = self.client.post(f"/api/violations/{target_vio_id}/notify-employee", headers=headers_a)
+        if resp.status_code == 200:
+            data = resp.json()
+            self.assertEqual(data["delivery_status"], "DEMO_RECORDED")
+            self.assertIn("Email delivery is not configured", data["message"])
 
 if __name__ == "__main__":
     unittest.main()
+

@@ -5,15 +5,14 @@ import {
 } from 'lucide-react';
 import { cn } from './lib/utils';
 
-export default function Login({ onLogin, onBack }) {
+export default function Login({ onLogin, onBack, onSetupOrg, initialCredentials }) {
   const [activeTab, setActiveTab] = useState('employee'); // 'employee' | 'hr'
-  const [email, setEmail] = useState('');
-  const [password, setPassword] = useState('');
+  const [email, setEmail] = useState(initialCredentials?.email || '');
+  const [password, setPassword] = useState(initialCredentials?.password || '');
   const [showPassword, setShowPassword] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [validationErrors, setValidationErrors] = useState({});
-  const [selectedCompany, setSelectedCompany] = useState('technova'); // 'technova' | 'aegispoint'
 
   const BACKEND_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000/api';
 
@@ -62,7 +61,6 @@ export default function Login({ onLogin, onBack }) {
         return;
       }
 
-      // data is { access_token, user: { id, email, role, tenant_id, company_name } }
       onLogin(data);
     } catch (err) {
       setLoading(false);
@@ -70,25 +68,15 @@ export default function Login({ onLogin, onBack }) {
     }
   };
 
-  // Quick Bypasses for Demos
-  const handleQuickLogin = async (roleType) => {
+  // Populate demo credentials into form inputs and automatically authenticate
+  const handleSelectDemoAccount = async (credentials) => {
     setError('');
+    setEmail(credentials.email);
+    setPassword(credentials.password);
+    if (credentials.roleType) {
+      setActiveTab(credentials.roleType);
+    }
     setLoading(true);
-
-    const demoCredentials = {
-      technova: {
-        employee: { email: 'employee@technova-demo.com', password: 'passwordA123' },
-        hr: { email: 'hr.officer@technova-demo.com', password: 'passwordA123' }
-      },
-      aegispoint: {
-        employee: { email: 'employee@aegispoint-demo.com', password: 'passwordB123' },
-        hr: { email: 'compliance@aegispoint-demo.com', password: 'passwordB123' }
-      }
-    };
-
-    const target = demoCredentials[selectedCompany][roleType];
-    setEmail(target.email);
-    setPassword(target.password);
 
     try {
       const response = await fetch(`${BACKEND_URL}/auth/login`, {
@@ -96,14 +84,14 @@ export default function Login({ onLogin, onBack }) {
         headers: {
           'Content-Type': 'application/json',
         },
-        body: JSON.stringify({ email: target.email, password: target.password }),
+        body: JSON.stringify({ email: credentials.email, password: credentials.password }),
       });
 
       const data = await response.json();
       setLoading(false);
 
       if (!response.ok) {
-        setError(data.detail || 'Authentication failed.');
+        setError(data.detail || 'Incorrect work email or password.');
         return;
       }
 
@@ -187,7 +175,7 @@ export default function Login({ onLogin, onBack }) {
             )}
           >
             <Sparkles className="w-4 h-4" />
-            HR Auditor
+            Compliance Officer
           </button>
         </div>
 
@@ -200,8 +188,8 @@ export default function Login({ onLogin, onBack }) {
             </p>
           ) : (
             <p>
-              <strong className="text-purple-400 block mb-0.5 font-bold">HR Auditor & Administrator Access:</strong>
-              Review company-wide violations, run audits on log uploads, manage policy documents, view comparison metrics, and generate audit reports.
+              <strong className="text-purple-400 block mb-0.5 font-bold">Compliance Officer & HR Access:</strong>
+              Review organization-wide violations, run audits on log uploads, manage policy documents, view comparison metrics, and manage SLA deadlines.
             </p>
           )}
         </div>
@@ -216,7 +204,7 @@ export default function Login({ onLogin, onBack }) {
               <Mail className="absolute left-3.5 top-3.5 w-4.5 h-4.5 text-slate-500" />
               <input
                 type="email"
-                placeholder={activeTab === 'employee' ? 'employee@company.com' : 'auditor@company.com'}
+                placeholder={activeTab === 'employee' ? 'employee@technova-demo.com' : 'hr@technova-demo.com'}
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
                 disabled={loading}
@@ -301,63 +289,69 @@ export default function Login({ onLogin, onBack }) {
           </button>
         </form>
 
-        {/* Company Switcher for Demo */}
-        <div className="space-y-2 mb-4">
-          <label className="block text-[9px] uppercase font-extrabold tracking-widest text-slate-500 text-center">
-            Target Demo Company
-          </label>
-          <div className="flex bg-slate-950 p-1.5 rounded-xl border border-slate-900 gap-1">
-            <button
-              type="button"
-              onClick={() => setSelectedCompany('technova')}
-              className={cn(
-                "flex-1 py-1.5 text-[10px] font-bold rounded-lg transition-all cursor-pointer",
-                selectedCompany === 'technova'
-                  ? "bg-indigo-600 text-white shadow-md shadow-indigo-500/10"
-                  : "text-slate-400 hover:text-slate-200"
-              )}
-            >
-              TechNova Technologies
-            </button>
-            <button
-              type="button"
-              onClick={() => setSelectedCompany('aegispoint')}
-              className={cn(
-                "flex-1 py-1.5 text-[10px] font-bold rounded-lg transition-all cursor-pointer",
-                selectedCompany === 'aegispoint'
-                  ? "bg-purple-600 text-white shadow-md shadow-purple-500/10"
-                  : "text-slate-400 hover:text-slate-200"
-              )}
-            >
-              AegisPoint Systems
-            </button>
-          </div>
+        {/* Divider */}
+        <div className="relative my-6 text-center">
+          <div className="absolute inset-0 flex items-center"><div className="w-full border-t border-slate-800/80"></div></div>
+          <span className="relative bg-[#0b0f19] px-3 text-[9px] uppercase font-extrabold tracking-widest text-slate-500">
+            Demo Access (Populates Form)
+          </span>
         </div>
 
-        {/* Demo Fast Logins */}
-        <div className="grid grid-cols-2 gap-3">
+        {/* Demo Account Bypasses */}
+        <div className="grid grid-cols-2 gap-2 text-[10px]">
           <button
             type="button"
             disabled={loading}
-            onClick={() => handleQuickLogin('employee')}
-            className="flex flex-col items-center justify-center p-3 rounded-2xl bg-[#0f172a]/30 border border-slate-800/80 hover:border-indigo-500/30 hover:bg-[#0f172a]/80 focus:outline-none focus:ring-2 focus:ring-indigo-500/50 transition-all cursor-pointer text-center group disabled:opacity-50"
+            onClick={() => handleSelectDemoAccount({ email: 'hr@technova-demo.com', password: 'passwordA123', roleType: 'hr' })}
+            className="p-2.5 rounded-xl bg-slate-900/60 border border-slate-800 hover:border-purple-500/40 text-left transition-all cursor-pointer"
           >
-            <ShieldCheck className="w-5 h-5 text-indigo-400 mb-1.5 group-hover:scale-110 transition-transform" />
-            <span className="text-[10px] font-bold text-slate-200">Employee Demo</span>
-            <span className="text-[8px] text-slate-500 font-semibold mt-0.5 font-sans">Mock Personal Records</span>
+            <span className="font-extrabold text-white block truncate">TechNova HR</span>
+            <span className="text-[8px] text-slate-400 block truncate">hr@technova-demo.com</span>
           </button>
-          
+
           <button
             type="button"
             disabled={loading}
-            onClick={() => handleQuickLogin('hr')}
-            className="flex flex-col items-center justify-center p-3 rounded-2xl bg-[#0f172a]/30 border border-slate-800/80 hover:border-purple-500/30 hover:bg-[#0f172a]/80 focus:outline-none focus:ring-2 focus:ring-purple-500/50 transition-all cursor-pointer text-center group disabled:opacity-50"
+            onClick={() => handleSelectDemoAccount({ email: 'compliance@aegispoint-demo.com', password: 'passwordB123', roleType: 'hr' })}
+            className="p-2.5 rounded-xl bg-slate-900/60 border border-slate-800 hover:border-purple-500/40 text-left transition-all cursor-pointer"
           >
-            <Sparkles className="w-5 h-5 text-purple-400 mb-1.5 group-hover:scale-110 transition-transform" />
-            <span className="text-[10px] font-bold text-slate-200">HR Auditor Demo</span>
-            <span className="text-[8px] text-slate-500 font-semibold mt-0.5 font-sans">Full Management Suite</span>
+            <span className="font-extrabold text-white block truncate">AegisPoint Compliance</span>
+            <span className="text-[8px] text-slate-400 block truncate">compliance@aegispoint-demo.com</span>
+          </button>
+
+          <button
+            type="button"
+            disabled={loading}
+            onClick={() => handleSelectDemoAccount({ email: 'employee@technova-demo.com', password: 'passwordA123', roleType: 'employee' })}
+            className="p-2.5 rounded-xl bg-slate-900/60 border border-slate-800 hover:border-indigo-500/40 text-left transition-all cursor-pointer"
+          >
+            <span className="font-extrabold text-white block truncate">TechNova Employee</span>
+            <span className="text-[8px] text-slate-400 block truncate">employee@technova-demo.com</span>
+          </button>
+
+          <button
+            type="button"
+            disabled={loading}
+            onClick={() => handleSelectDemoAccount({ email: 'multitenant.hr@enterprise-demo.com', password: 'passwordMulti123', roleType: 'hr' })}
+            className="p-2.5 rounded-xl bg-slate-900/60 border border-purple-500/30 bg-purple-500/5 hover:border-purple-500/60 text-left transition-all cursor-pointer"
+          >
+            <span className="font-extrabold text-purple-300 block truncate">Multi-Tenant HR</span>
+            <span className="text-[8px] text-slate-400 block truncate">2 Authorized Orgs</span>
           </button>
         </div>
+
+        {/* Organization Setup Onboarding link */}
+        {onSetupOrg && (
+          <div className="mt-6 pt-4 border-t border-slate-800/80 text-center">
+            <button
+              type="button"
+              onClick={onSetupOrg}
+              className="text-xs font-extrabold text-purple-400 hover:text-purple-300 transition-colors inline-flex items-center gap-1.5 cursor-pointer"
+            >
+              <Building className="w-3.5 h-3.5" /> Need a new tenant? Onboard Organization →
+            </button>
+          </div>
+        )}
 
       </div>
     </div>

@@ -8,7 +8,7 @@ import PolicyAcknowledgmentModal from './PolicyAcknowledgmentModal';
 import SLAStatusIndicator from './SLAStatusIndicator';
 import { cn } from '../lib/utils';
 
-const BACKEND_URL = 'http://127.0.0.1:8000/api';
+const BACKEND_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000/api';
 
 export default function EmployeeDashboard({ user, onLogout }) {
   const [selectedViolation, setSelectedViolation] = useState(null);
@@ -109,22 +109,34 @@ export default function EmployeeDashboard({ user, onLogout }) {
               <ShieldAlert className="w-6 h-6" />
             </div>
             <div>
-              <div className="flex items-center gap-2">
-                <h2 className="text-base font-bold text-white tracking-tight">AI Compliance Portal</h2>
-                <span className="bg-amber-500/15 text-amber-400 text-[8px] px-1.5 py-0.5 rounded font-extrabold uppercase border border-amber-500/25 tracking-wider font-mono">Demo Environment</span>
-              </div>
+              <h2 className="text-base font-bold text-white tracking-tight">AI Compliance Portal</h2>
               <span className="text-[10px] text-slate-500 font-semibold uppercase tracking-wider block">Employee Hub</span>
             </div>
           </div>
 
           <div className="flex items-center gap-4">
-            {/* Employee tag */}
-            {user?.company_name && (
+            {/* Organization Badge or Multi-Tenant Selector */}
+            {user?.authorized_tenants && user.authorized_tenants.length > 1 ? (
+              <div className="hidden sm:flex items-center gap-2 px-3 py-1.5 rounded-xl bg-slate-900 border border-purple-500/40 text-xs font-semibold text-purple-300">
+                <Building className="w-3.5 h-3.5 text-purple-400" />
+                <select
+                  value={user.tenant_id}
+                  onChange={(e) => onSwitchTenant && onSwitchTenant(e.target.value)}
+                  className="bg-transparent text-purple-200 text-xs font-bold focus:outline-none cursor-pointer pr-1"
+                >
+                  {user.authorized_tenants.map(t => (
+                    <option key={t.tenant_id} value={t.tenant_id} className="bg-slate-900 text-white font-medium">
+                      {t.company_name}
+                    </option>
+                  ))}
+                </select>
+              </div>
+            ) : user?.company_name ? (
               <div className="hidden sm:flex items-center gap-2 px-3 py-1.5 rounded-xl bg-slate-900 border border-slate-800 text-xs font-semibold text-indigo-400">
                 <Building className="w-3.5 h-3.5 text-indigo-400" />
                 <span>{user.company_name}</span>
               </div>
-            )}
+            ) : null}
             <div className="hidden sm:flex items-center gap-2 px-3 py-1.5 rounded-xl bg-slate-900 border border-slate-800 text-xs font-semibold text-slate-300">
               <User className="w-3.5 h-3.5 text-indigo-400" />
               <span>{employeeEmail}</span>

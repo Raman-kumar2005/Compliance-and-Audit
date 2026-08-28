@@ -206,20 +206,45 @@ tempCodeRunnerFile.py
 # Ruff stuff:
 .ruff_cache/
 
-# PyPI configuration file
-.pypirc
+# Environment & Secret Files
+.env
+.env.*
+!.env.example
+backend/.env
+frontend/.env
 
-# Marimo
-marimo/_static/
-marimo/_lsp/
-__marimo__/
+# Node.js & Frontend Build Outputs
+node_modules/
+dist/
+build/
+frontend/dist/
+frontend/node_modules/
 
-# Streamlit
-.streamlit/secrets.toml
+# Python & Virtual Environments
+__pycache__/
+*.py[codz]
+.venv/
+venv/
+backend/venv/
 
-# Compliance database files
+# Testing & Coverage
+coverage/
+.pytest_cache/
+htmlcov/
+.coverage
+
+# System & Editor Files
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
+
+# Compliance Database Runtime Files
 backend/*_technova-demo.json
 backend/*_aegispoint-demo.json
+backend/*_apexglobalsystems-*.json
 backend/*_tenant-company-a.json
 backend/*_tenant-company-b.json
 backend/*_tenant-security-hq.json
+backend/invitations_*
+backend/organizations_*

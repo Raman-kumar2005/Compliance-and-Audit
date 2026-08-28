@@ -3,7 +3,10 @@ import json
 import io
 import uuid
 import hashlib
+import smtplib
+from email.mime.text import MIMEText
 from datetime import datetime, timedelta
+from typing import Optional, List, Dict, Any
 import pandas as pd
 from pathlib import Path
 from dotenv import load_dotenv
@@ -43,6 +46,24 @@ def get_tenant_file(base_name: str, tenant_id: str) -> str:
     if len(parts) == 2:
         return f"{parts[0]}_{safe_tenant}.{parts[1]}"
     return f"{base_name}_{safe_tenant}"
+
+def load_json_file(filename: str, default=None):
+    if default is None:
+        default = []
+    if not os.path.exists(filename):
+        return default
+    try:
+        with open(filename, "r") as f:
+            return json.load(f)
+    except Exception:
+        return default
+
+def save_json_file(filename: str, data):
+    try:
+        with open(filename, "w") as f:
+            json.dump(data, f, indent=4)
+    except Exception as e:
+        print(f"Error saving {filename}:", e)
 
 def get_history(tenant_id: str = "tenant-security-hq"):
     filename = get_tenant_file(HISTORY_FILE, tenant_id)
@@ -122,9 +143,19 @@ class ReviewRequest(BaseModel):
     action: str = Field(...)  # APPROVE, REJECT, or REOPEN
     comment: str = Field(None, max_length=5000)
 
+class GeminiViolation(BaseModel):
+    id: int = Field(default=1)
+    employee: str = Field(default="Unknown", description="Employee identifier or username")
+    department: str = Field(default="Unknown", description="Inferred or explicitly stated department")
+    rule_violated: str = Field(description="Summary of policy rule violated")
+    log_entry: str = Field(description="Exact log entry evidence")
+    severity: str = Field(description="Must be Critical, High, Medium, or Low")
+    explanation: str = Field(description="Concise 1-sentence explanation")
+    recommendation: str = Field(description="Concise 1-sentence mitigation recommendation")
+
 class AuditResponse(BaseModel):
     metrics: Metrics
-    violations: list[Violation]
+    violations: list[GeminiViolation]
 
 
 # --- PYDANTIC SCHEMAS FOR COMPARISON ENDPOINT ---
@@ -308,14 +339,29 @@ def decode_jwt(token: str) -> dict:
         return None
 
 USERS_DB = {
-    "hr.officer@technova-demo.com": {
+    "hr@technova-demo.com": {
         "id": "usr-technova-hr",
+        "name": "TechNova HR Officer",
+        "email": "hr@technova-demo.com",
+        "password": "passwordA123",
+        "role": "HR Compliance Officer",
+        "tenant_id": "technova-demo",
+        "company_name": "TechNova Technologies",
+        "authorized_tenants": [
+            {"tenant_id": "technova-demo", "company_name": "TechNova Technologies", "role": "HR Compliance Officer"}
+        ]
+    },
+    "hr.officer@technova-demo.com": {
+        "id": "usr-technova-hr-legacy",
         "name": "TechNova HR Officer",
         "email": "hr.officer@technova-demo.com",
         "password": "passwordA123",
         "role": "HR Compliance Officer",
         "tenant_id": "technova-demo",
-        "company_name": "TechNova Technologies"
+        "company_name": "TechNova Technologies",
+        "authorized_tenants": [
+            {"tenant_id": "technova-demo", "company_name": "TechNova Technologies", "role": "HR Compliance Officer"}
+        ]
     },
     "employee@technova-demo.com": {
         "id": "usr-technova-emp",
@@ -325,7 +371,10 @@ USERS_DB = {
         "role": "Employee",
         "employee_id": "EMP-TN-1042",
         "tenant_id": "technova-demo",
-        "company_name": "TechNova Technologies"
+        "company_name": "TechNova Technologies",
+        "authorized_tenants": [
+            {"tenant_id": "technova-demo", "company_name": "TechNova Technologies", "role": "Employee"}
+        ]
     },
     "compliance@aegispoint-demo.com": {
         "id": "usr-aegispoint-hr",
@@ -334,7 +383,10 @@ USERS_DB = {
         "password": "passwordB123",
         "role": "Compliance Officer",
         "tenant_id": "aegispoint-demo",
-        "company_name": "AegisPoint Systems"
+        "company_name": "AegisPoint Systems",
+        "authorized_tenants": [
+            {"tenant_id": "aegispoint-demo", "company_name": "AegisPoint Systems", "role": "Compliance Officer"}
+        ]
     },
     "employee@aegispoint-demo.com": {
         "id": "usr-aegispoint-emp",
@@ -344,7 +396,23 @@ USERS_DB = {
         "role": "Employee",
         "employee_id": "EMP-AP-2011",
         "tenant_id": "aegispoint-demo",
-        "company_name": "AegisPoint Systems"
+        "company_name": "AegisPoint Systems",
+        "authorized_tenants": [
+            {"tenant_id": "aegispoint-demo", "company_name": "AegisPoint Systems", "role": "Employee"}
+        ]
+    },
+    "multitenant.hr@enterprise-demo.com": {
+        "id": "usr-multi-hr",
+        "name": "Multi-Tenant HR Admin",
+        "email": "multitenant.hr@enterprise-demo.com",
+        "password": "passwordMulti123",
+        "role": "HR Compliance Officer",
+        "tenant_id": "technova-demo",
+        "company_name": "TechNova Technologies",
+        "authorized_tenants": [
+            {"tenant_id": "technova-demo", "company_name": "TechNova Technologies", "role": "HR Compliance Officer"},
+            {"tenant_id": "aegispoint-demo", "company_name": "AegisPoint Systems", "role": "Compliance Officer"}
+        ]
     },
     # Preserve original users for test_isolation.py compatibility but map them to the proper tenants!
     "hr.alice@company-a.com": {
@@ -354,7 +422,10 @@ USERS_DB = {
         "password": "passwordA123",
         "role": "HR Compliance Officer",
         "tenant_id": "technova-demo",
-        "company_name": "TechNova Technologies"
+        "company_name": "TechNova Technologies",
+        "authorized_tenants": [
+            {"tenant_id": "technova-demo", "company_name": "TechNova Technologies", "role": "HR Compliance Officer"}
+        ]
     },
     "employee.bob@company-a.com": {
         "id": "usr-bob",
@@ -364,7 +435,10 @@ USERS_DB = {
         "role": "Employee",
         "employee_id": "EMP-TN-1042",
         "tenant_id": "technova-demo",
-        "company_name": "TechNova Technologies"
+        "company_name": "TechNova Technologies",
+        "authorized_tenants": [
+            {"tenant_id": "technova-demo", "company_name": "TechNova Technologies", "role": "Employee"}
+        ]
     },
     "hr.charlie@company-b.com": {
         "id": "usr-charlie",
@@ -373,7 +447,10 @@ USERS_DB = {
         "password": "passwordB123",
         "role": "Compliance Officer",
         "tenant_id": "aegispoint-demo",
-        "company_name": "AegisPoint Systems"
+        "company_name": "AegisPoint Systems",
+        "authorized_tenants": [
+            {"tenant_id": "aegispoint-demo", "company_name": "AegisPoint Systems", "role": "Compliance Officer"}
+        ]
     },
     "employee.david@company-b.com": {
         "id": "usr-david",
@@ -383,7 +460,10 @@ USERS_DB = {
         "role": "Employee",
         "employee_id": "EMP-AP-2011",
         "tenant_id": "aegispoint-demo",
-        "company_name": "AegisPoint Systems"
+        "company_name": "AegisPoint Systems",
+        "authorized_tenants": [
+            {"tenant_id": "aegispoint-demo", "company_name": "AegisPoint Systems", "role": "Employee"}
+        ]
     },
     "auditor.compliance@firm-wide.com": {
         "id": "usr-auditor",
@@ -393,7 +473,10 @@ USERS_DB = {
         "role": "HR Compliance Officer",
         "tenant_id": "technova-demo",
         "company_name": "TechNova Technologies",
-        "employee_id": "EMP-TN-1042"
+        "employee_id": "EMP-TN-1042",
+        "authorized_tenants": [
+            {"tenant_id": "technova-demo", "company_name": "TechNova Technologies", "role": "HR Compliance Officer"}
+        ]
     },
     "employee.ross@security-hq.com": {
         "id": "usr-ross",
@@ -403,7 +486,10 @@ USERS_DB = {
         "role": "Employee",
         "employee_id": "EMP-TN-1051",
         "tenant_id": "technova-demo",
-        "company_name": "TechNova Technologies"
+        "company_name": "TechNova Technologies",
+        "authorized_tenants": [
+            {"tenant_id": "technova-demo", "company_name": "TechNova Technologies", "role": "Employee"}
+        ]
     }
 }
 
@@ -425,6 +511,9 @@ class LoginRequest(BaseModel):
     email: str
     password: str
 
+class SwitchTenantRequest(BaseModel):
+    target_tenant_id: str
+
 @app.post("/api/auth/login")
 def login_endpoint(payload: LoginRequest):
     email_clean = payload.email.strip().lower()
@@ -437,17 +526,25 @@ def login_endpoint(payload: LoginRequest):
     if not matched_user or matched_user["password"] != payload.password:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Incorrect corporate email or password."
+            detail="Incorrect work email or password."
         )
         
+    auth_tenants = matched_user.get("authorized_tenants", [{
+        "tenant_id": matched_user["tenant_id"],
+        "company_name": matched_user["company_name"],
+        "role": matched_user["role"]
+    }])
+
     # Generate JWT claims (valid for 12 hours)
     claims = {
         "id": matched_user["id"],
+        "user_id": matched_user["id"],
         "email": matched_user["email"],
         "role": matched_user["role"],
         "tenant_id": matched_user["tenant_id"],
         "company_name": matched_user["company_name"],
         "name": matched_user["name"],
+        "authorized_tenants": auth_tenants,
         "exp": time.time() + 12 * 3600
     }
     if "employee_id" in matched_user:
@@ -458,12 +555,186 @@ def login_endpoint(payload: LoginRequest):
         "access_token": token,
         "user": {
             "id": matched_user["id"],
+            "user_id": matched_user["id"],
             "email": matched_user["email"],
             "role": matched_user["role"],
             "tenant_id": matched_user["tenant_id"],
-            "company_name": matched_user["company_name"]
+            "company_name": matched_user["company_name"],
+            "name": matched_user["name"],
+            "authorized_tenants": auth_tenants
         }
     }
+
+@app.post("/api/auth/switch-tenant")
+def switch_tenant_endpoint(payload: SwitchTenantRequest, current_user: dict = Depends(get_current_user)):
+    target_tenant_id = payload.target_tenant_id.strip()
+    authorized_tenants = current_user.get("authorized_tenants", [])
+    
+    matching_tenant = None
+    for t in authorized_tenants:
+        if t["tenant_id"] == target_tenant_id:
+            matching_tenant = t
+            break
+            
+    if not matching_tenant:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail=f"Access denied: You are not authorized to access tenant '{target_tenant_id}'."
+        )
+        
+    claims = {
+        "id": current_user.get("id") or current_user.get("user_id"),
+        "user_id": current_user.get("id") or current_user.get("user_id"),
+        "email": current_user["email"],
+        "role": matching_tenant["role"],
+        "tenant_id": matching_tenant["tenant_id"],
+        "company_name": matching_tenant["company_name"],
+        "name": current_user.get("name", ""),
+        "authorized_tenants": authorized_tenants,
+        "exp": time.time() + 12 * 3600
+    }
+    if "employee_id" in current_user:
+        claims["employee_id"] = current_user["employee_id"]
+        
+    token = create_jwt(claims)
+    return {
+        "access_token": token,
+        "user": {
+            "id": current_user.get("id") or current_user.get("user_id"),
+            "user_id": current_user.get("id") or current_user.get("user_id"),
+            "email": current_user["email"],
+            "role": matching_tenant["role"],
+            "tenant_id": matching_tenant["tenant_id"],
+            "company_name": matching_tenant["company_name"],
+            "name": current_user.get("name", ""),
+            "authorized_tenants": authorized_tenants
+        }
+    }
+
+# --- ORGANIZATION & INVITATION ENDPOINTS ---
+
+class CreateOrganizationRequest(BaseModel):
+    company_name: str
+    industry: Optional[str] = "Technology"
+    company_size: Optional[str] = "51-200"
+    admin_email: str
+    admin_password: str
+    admin_name: Optional[str] = ""
+
+@app.post("/api/organizations/create")
+def create_organization_endpoint(payload: CreateOrganizationRequest):
+    if not payload.company_name or not payload.admin_email or not payload.admin_password:
+        raise HTTPException(status_code=400, detail="Missing required company name, email, or password.")
+        
+    slug = re.sub(r'[^a-z0-9]', '', payload.company_name.lower().replace(' ', '-'))
+    if not slug:
+        slug = "org"
+    tenant_id = f"{slug}-{uuid.uuid4().hex[:6]}"
+    admin_email = payload.admin_email.strip().lower()
+    admin_id = f"usr-{uuid.uuid4().hex[:8]}"
+    
+    org_record = {
+        "tenant_id": tenant_id,
+        "company_name": payload.company_name,
+        "industry": payload.industry or "Technology",
+        "company_size": payload.company_size or "51-200",
+        "created_by": admin_id,
+        "created_at": datetime.utcnow().isoformat()
+    }
+    
+    USERS_DB[admin_email] = {
+        "id": admin_id,
+        "user_id": admin_id,
+        "name": payload.admin_name or f"{payload.company_name} Admin",
+        "email": admin_email,
+        "password": payload.admin_password,
+        "role": "HR Compliance Officer",
+        "tenant_id": tenant_id,
+        "company_name": payload.company_name,
+        "authorized_tenants": [
+            {"tenant_id": tenant_id, "company_name": payload.company_name, "role": "HR Compliance Officer"}
+        ]
+    }
+    
+    save_json_file(get_tenant_file("organizations", tenant_id), [org_record])
+    seed_data_if_empty(tenant_id)
+    seed_policies_if_empty(tenant_id)
+    
+    return {
+        "message": "Organization created successfully.",
+        "tenant_id": tenant_id,
+        "company_name": payload.company_name,
+        "admin_email": admin_email,
+        "user_id": admin_id
+    }
+
+class InviteUserRequest(BaseModel):
+    email: str
+    role: str
+
+@app.post("/api/hr/invite-user")
+def invite_user_endpoint(payload: InviteUserRequest, current_user: dict = Depends(get_current_user)):
+    if not is_auditor(current_user):
+        raise HTTPException(status_code=403, detail="Forbidden: Only HR administrators can invite users.")
+        
+    tenant_id = current_user["tenant_id"]
+    company_name = current_user.get("company_name", "Enterprise")
+    email_clean = payload.email.strip().lower()
+    role = payload.role if payload.role in ["HR Compliance Officer", "Compliance Officer", "Employee"] else "Employee"
+    
+    user_id = f"usr-{uuid.uuid4().hex[:8]}"
+    invitation_id = f"inv-{uuid.uuid4().hex[:8]}"
+    
+    invitation_record = {
+        "id": invitation_id,
+        "user_id": user_id,
+        "tenant_id": tenant_id,
+        "company_name": company_name,
+        "email": email_clean,
+        "role": role,
+        "status": "invited",
+        "invited_by": current_user.get("user_id") or current_user.get("id"),
+        "invited_at": datetime.utcnow().isoformat()
+    }
+    
+    if email_clean not in USERS_DB:
+        USERS_DB[email_clean] = {
+            "id": user_id,
+            "user_id": user_id,
+            "name": email_clean.split('@')[0].capitalize(),
+            "email": email_clean,
+            "password": "password123",
+            "role": role,
+            "tenant_id": tenant_id,
+            "company_name": company_name,
+            "authorized_tenants": [
+                {"tenant_id": tenant_id, "company_name": company_name, "role": role}
+            ]
+        }
+    else:
+        u = USERS_DB[email_clean]
+        if not any(t["tenant_id"] == tenant_id for t in u.get("authorized_tenants", [])):
+            u.setdefault("authorized_tenants", []).append({
+                "tenant_id": tenant_id, "company_name": company_name, "role": role
+            })
+            
+    inv_file = get_tenant_file("invitations", tenant_id)
+    invitations = load_json_file(inv_file, [])
+    invitations.append(invitation_record)
+    save_json_file(inv_file, invitations)
+    
+    return {
+        "message": f"Invitation sent to {email_clean}",
+        "invitation": invitation_record
+    }
+
+@app.get("/api/hr/invitations")
+def get_invitations_endpoint(current_user: dict = Depends(get_current_user)):
+    if not is_auditor(current_user):
+        raise HTTPException(status_code=403, detail="Forbidden: HR access required.")
+    tenant_id = current_user["tenant_id"]
+    inv_file = get_tenant_file("invitations", tenant_id)
+    return load_json_file(inv_file, [])
 
 # --- BASE ENDPOINTS ---
 
@@ -932,26 +1203,15 @@ INSTRUCTIONS:
 
         audit_result = json.loads(clean_text)
 
-        # 5. Email Alert Trigger Logic for High/Critical Violations
+        # 5. High/Critical Violations Metadata (Automatic emails disabled per HR compliance policy)
         violations = audit_result.get("violations", [])
-        high_critical_count = 0
-        for violation in violations:
-            sev = str(violation.get("severity", "")).upper()
-            if sev in ["HIGH", "CRITICAL"]:
-                high_critical_count += 1
-                send_violation_alert(
-                    rule=violation.get("rule_violated", "Unknown Rule"),
-                    severity=sev,
-                    log_evidence=violation.get("log_entry", "See Dashboard for details"),
-                    recipient_email=recipient
-                )
+        high_critical_count = sum(1 for v in violations if str(v.get("severity", "")).upper() in ["HIGH", "CRITICAL"])
 
-        alert_triggered = high_critical_count > 0
         alert_info = {
-            "triggered": alert_triggered,
+            "triggered": False,
             "recipient": recipient,
             "violation_count": high_critical_count,
-            "message": f"Mock email alert sent to {recipient}" if alert_triggered else "No critical or high violations found. No email alert triggered."
+            "message": "Automatic notifications disabled. Employee notifications require manual HR review & confirmation."
         }
 
         # 6. Save audit record with metadata to history
@@ -3303,3 +3563,303 @@ def log_activity_event(violation_id: str, actor_name: str, actor_role: str, acti
     activities.append(new_act)
     with open(activity_file, "w") as f:
         json.dump(activities, f, indent=4)
+
+
+# ==========================================
+# SECURE HR-CONTROLLED EMPLOYEE NOTIFICATION WORKFLOW
+# ==========================================
+
+EMPLOYEE_NOTIF_FILE = "employee_notifications.json"
+
+def get_employee_notifications(tenant_id: str = "tenant-security-hq"):
+    filename = get_tenant_file(EMPLOYEE_NOTIF_FILE, tenant_id)
+    if not os.path.exists(filename):
+        return []
+    try:
+        with open(filename, "r") as f:
+            return json.load(f)
+    except Exception:
+        return []
+
+def save_employee_notifications(notifs, tenant_id: str = "tenant-security-hq"):
+    filename = get_tenant_file(EMPLOYEE_NOTIF_FILE, tenant_id)
+    with open(filename, "w") as f:
+        json.dump(notifs, f, indent=2)
+
+def mask_email(email: str) -> str:
+    if not email or "@" not in email:
+        return "***@***.com"
+    user_part, domain_part = email.split("@", 1)
+    if len(user_part) <= 2:
+        masked_user = user_part[0] + "***"
+    else:
+        masked_user = user_part[0] + "***" + user_part[-1]
+    return f"{masked_user}@{domain_part}"
+
+def resolve_tenant_employee(emp_identifier: str, tenant_id: str) -> Optional[Dict[str, Any]]:
+    if not emp_identifier:
+        return None
+        
+    identifier_str = str(emp_identifier).strip().lower()
+    
+    # 1. Search USERS_DB matching active tenant
+    for user_key, u in USERS_DB.items():
+        user_tenant = u.get("tenant_id")
+        auth_tenants = [t.get("tenant_id") for t in u.get("authorized_tenants", []) if isinstance(t, dict)]
+        if user_tenant != tenant_id and tenant_id not in auth_tenants:
+            continue
+            
+        u_emp_id = str(u.get("employee_id", "")).strip().lower()
+        u_email = str(u.get("email", "")).strip().lower()
+        u_id = str(u.get("id", "")).strip().lower()
+        u_name = str(u.get("name", "")).strip().lower()
+        
+        if identifier_str in [u_emp_id, u_email, u_id, u_name] or (u_emp_id and u_emp_id.endswith(identifier_str)):
+            full_name = u.get("name", "Employee")
+            first_name = full_name.split()[0] if full_name else "Employee"
+            return {
+                "employee_id": u.get("employee_id") or u.get("id") or "EMP-UNKNOWN",
+                "name": full_name,
+                "first_name": first_name,
+                "email": u.get("email"),
+                "department": u.get("department", "Operations"),
+                "tenant_id": tenant_id
+            }
+            
+    # 2. Search MOCK_EMPLOYEES for tenant-matching records
+    tenant_mock_employees = [
+        emp for emp in MOCK_EMPLOYEES
+        if (tenant_id in ["technova-demo", "tenant-company-a"] and (emp["email"].endswith("@technova-demo.com") or emp["email"].endswith("@company-a.com"))) or
+           (tenant_id in ["aegispoint-demo", "tenant-company-b"] and (emp["email"].endswith("@aegispoint-demo.com") or emp["email"].endswith("@company-b.com"))) or
+           (tenant_id == "tenant-security-hq" and emp["email"].endswith("@security-hq.com"))
+    ]
+    if not tenant_mock_employees:
+        tenant_mock_employees = MOCK_EMPLOYEES
+
+    for emp in tenant_mock_employees:
+        e_id = str(emp.get("employee_id", "")).strip().lower()
+        e_email = str(emp.get("email", "")).strip().lower()
+        e_name = str(emp.get("name", "")).strip().lower()
+        
+        if identifier_str in [e_id, e_email, e_name] or (e_id and e_id.endswith(identifier_str)):
+            full_name = emp.get("name", "Employee")
+            first_name = full_name.split()[0] if full_name else "Employee"
+            return {
+                "employee_id": emp.get("employee_id"),
+                "name": full_name,
+                "first_name": first_name,
+                "email": emp.get("email"),
+                "department": emp.get("department", "Operations"),
+                "tenant_id": tenant_id
+            }
+
+    return None
+
+def send_email_via_smtp(recipient_email: str, subject: str, body: str) -> tuple[bool, str]:
+    smtp_host = os.environ.get("SMTP_HOST")
+    smtp_port = int(os.environ.get("SMTP_PORT", 587))
+    smtp_user = os.environ.get("SMTP_USER")
+    smtp_password = os.environ.get("SMTP_PASSWORD")
+    from_email = os.environ.get("SMTP_FROM_EMAIL", "noreply@compliance-audit.org")
+
+    if not smtp_host or not smtp_user or not smtp_password:
+        return False, "Email delivery is not configured. Demo notification recorded."
+
+    try:
+        msg = MIMEText(body, "plain", "utf-8")
+        msg["Subject"] = subject
+        msg["From"] = from_email
+        msg["To"] = recipient_email
+
+        with smtplib.SMTP(smtp_host, smtp_port, timeout=10) as server:
+            server.starttls()
+            server.login(smtp_user, smtp_password)
+            server.send_message(msg)
+        return True, "Notification sent successfully."
+    except Exception as e:
+        print(f"[SMTP ERROR] Failed to send email to {recipient_email}: {e}")
+        return False, f"SMTP delivery failed: {str(e)}"
+
+@app.get("/api/violations/{violation_id}/employee-preview")
+def preview_employee_notification(violation_id: str, current_user: dict = Depends(get_current_user)):
+    if not is_auditor(current_user):
+        raise HTTPException(status_code=403, detail="HR permissions required")
+        
+    tenant_id = current_user["tenant_id"]
+    all_vios = get_all_violations_flat(tenant_id)
+    
+    target_vio = None
+    for audit_id, vio in all_vios:
+        if str(vio.get("id")) == str(violation_id):
+            target_vio = vio
+            break
+            
+    if not target_vio:
+        raise HTTPException(status_code=404, detail="Violation not found in active tenant")
+        
+    emp_identifier = target_vio.get("assigned_employee_id") or target_vio.get("employee") or target_vio.get("assigned_to", {}).get("name")
+    resolved_emp = resolve_tenant_employee(emp_identifier, tenant_id)
+    
+    if not resolved_emp:
+        raise HTTPException(status_code=400, detail=f"Employee '{emp_identifier}' could not be resolved from active tenant directory.")
+        
+    # Check cooldown status (300 seconds / 5 min)
+    notifs = get_employee_notifications(tenant_id)
+    recent_notif = None
+    now_dt = datetime.utcnow()
+    
+    for n in notifs:
+        if n.get("violation_id") == str(violation_id) and n.get("employee_id") == resolved_emp["employee_id"]:
+            sent_str = n.get("sent_at", "").replace("Z", "")
+            try:
+                sent_dt = datetime.fromisoformat(sent_str)
+                if (now_dt - sent_dt).total_seconds() < 300:
+                    recent_notif = n
+                    break
+            except Exception:
+                pass
+                
+    policy_name = target_vio.get("rule_violated", "Corporate Compliance Policy")
+    short_action = target_vio.get("recommendation", "Review policy compliance requirements and update task log")
+    due_date = target_vio.get("due_date") or "2026-08-31"
+    
+    subject = "Action required: Compliance item assigned to you"
+    body = f"""Hello {resolved_emp['first_name']},
+
+A compliance item has been assigned to you regarding: {policy_name}.
+
+Required Action: {short_action}
+Due Date: {due_date}
+
+Please log in to your secure AI Auditor portal to review details and submit any required responses:
+http://localhost:5173/employee-dashboard
+
+If you believe this compliance item was assigned to you in error, please contact your Compliance Officer immediately.
+
+Regards,
+HR Compliance & Audit Team"""
+
+    return {
+        "violation_id": violation_id,
+        "employee": {
+            "employee_id": resolved_emp["employee_id"],
+            "name": resolved_emp["name"],
+            "first_name": resolved_emp["first_name"],
+            "masked_email": mask_email(resolved_emp["email"]),
+            "department": resolved_emp["department"]
+        },
+        "policy_name": policy_name,
+        "required_action": short_action,
+        "due_date": due_date,
+        "neutral_subject": subject,
+        "preview_body": body,
+        "cooldown_active": recent_notif is not None,
+        "cooldown_sent_at": recent_notif.get("sent_at") if recent_notif else None
+    }
+
+
+@app.post("/api/violations/{violation_id}/notify-employee")
+def notify_employee_endpoint(violation_id: str, current_user: dict = Depends(get_current_user)):
+    if not is_auditor(current_user):
+        raise HTTPException(status_code=403, detail="HR permissions required")
+        
+    tenant_id = current_user["tenant_id"]
+    all_vios = get_all_violations_flat(tenant_id)
+    
+    target_vio = None
+    for audit_id, vio in all_vios:
+        if str(vio.get("id")) == str(violation_id):
+            target_vio = vio
+            break
+            
+    if not target_vio:
+        raise HTTPException(status_code=404, detail="Violation not found in active tenant")
+        
+    emp_identifier = target_vio.get("assigned_employee_id") or target_vio.get("employee") or target_vio.get("assigned_to", {}).get("name")
+    resolved_emp = resolve_tenant_employee(emp_identifier, tenant_id)
+    
+    if not resolved_emp or not resolved_emp.get("email"):
+        raise HTTPException(status_code=400, detail=f"Employee '{emp_identifier}' email could not be resolved from active tenant directory.")
+        
+    # Cooldown check: 300 seconds (5 min) for same violation + employee
+    notifs = get_employee_notifications(tenant_id)
+    now_dt = datetime.utcnow()
+    
+    for n in notifs:
+        if n.get("violation_id") == str(violation_id) and n.get("employee_id") == resolved_emp["employee_id"]:
+            sent_str = n.get("sent_at", "").replace("Z", "")
+            try:
+                sent_dt = datetime.fromisoformat(sent_str)
+                if (now_dt - sent_dt).total_seconds() < 300:
+                    raise HTTPException(
+                        status_code=400,
+                        detail="A notification was recently sent to this employee for this compliance item. Please wait before sending another notification."
+                    )
+            except HTTPException:
+                raise
+            except Exception:
+                pass
+
+    policy_name = target_vio.get("rule_violated", "Corporate Compliance Policy")
+    short_action = target_vio.get("recommendation", "Review policy compliance requirements and update task log")
+    due_date = target_vio.get("due_date") or "2026-08-31"
+    
+    subject = "Action required: Compliance item assigned to you"
+    body = f"""Hello {resolved_emp['first_name']},
+
+A compliance item has been assigned to you regarding: {policy_name}.
+
+Required Action: {short_action}
+Due Date: {due_date}
+
+Please log in to your secure AI Auditor portal to review details and submit any required responses:
+http://localhost:5173/employee-dashboard
+
+If you believe this compliance item was assigned to you in error, please contact your Compliance Officer immediately.
+
+Regards,
+HR Compliance & Audit Team"""
+
+    # Dispatch email via SMTP if configured, else record demo state
+    success, message = send_email_via_smtp(resolved_emp["email"], subject, body)
+    delivery_status = "SENT" if success else "DEMO_RECORDED"
+    if not success and "Email delivery is not configured" in message:
+        display_message = "Email delivery is not configured. Demo notification recorded."
+    elif success:
+        display_message = "Notification sent successfully."
+    else:
+        display_message = message
+
+    notif_id = f"NOTIF-{uuid.uuid4().hex[:8].upper()}"
+    notif_record = {
+        "notification_id": notif_id,
+        "tenant_id": tenant_id,
+        "violation_id": str(violation_id),
+        "employee_id": resolved_emp["employee_id"],
+        "recipient_email": resolved_emp["email"],
+        "recipient_email_masked": mask_email(resolved_emp["email"]),
+        "sent_by_user_id": current_user.get("id") or current_user.get("user_id") or "hr-auditor",
+        "sent_at": datetime.utcnow().isoformat() + "Z",
+        "status": delivery_status,
+        "delivery_message": display_message
+    }
+    
+    notifs.append(notif_record)
+    save_employee_notifications(notifs, tenant_id)
+    
+    log_activity_event(
+        violation_id=str(violation_id),
+        actor_name=current_user.get("name", "HR Officer"),
+        actor_role=current_user.get("role", "HR"),
+        action="EMPLOYEE_NOTIFIED",
+        comment=f"HR sent compliance notification to {resolved_emp['name']} ({mask_email(resolved_emp['email'])}). Delivery status: {delivery_status}.",
+        tenant_id=tenant_id
+    )
+
+    return {
+        "status": "success",
+        "delivery_status": delivery_status,
+        "message": display_message,
+        "recipient_email_masked": mask_email(resolved_emp["email"]),
+        "notification": notif_record
+    }

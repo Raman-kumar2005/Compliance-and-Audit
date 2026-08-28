@@ -6,7 +6,7 @@ import axios from 'axios';
 import { cn } from '../lib/utils';
 import html2pdf from 'html2pdf.js';
 
-const BACKEND_URL = 'http://127.0.0.1:8000/api';
+const BACKEND_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000/api';
 
 export default function PolicyAcknowledgmentModal({ policy, user, onClose, onAcknowledged }) {
   const [loading, setLoading] = useState(false);

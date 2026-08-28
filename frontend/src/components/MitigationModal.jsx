@@ -7,8 +7,9 @@ import {
 import axios from 'axios';
 import { cn } from '../lib/utils';
 import SLAStatusIndicator from './SLAStatusIndicator';
+import EmployeeNotificationModal from './EmployeeNotificationModal';
 
-const BACKEND_URL = 'http://127.0.0.1:8000/api';
+const BACKEND_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000/api';
 
 const URL_REGEX = /^(https?:\/\/)?([\da-z.-]+)\.([a-z.]{2,6})([\/\w .-]*)*\/?$/i;
 
@@ -93,6 +94,7 @@ export default function MitigationModal({
   const [slaActionLoading, setSlaActionLoading] = useState(false);
   const [manualEscalateComment, setManualEscalateComment] = useState('');
   const [showManualEscalateInput, setShowManualEscalateInput] = useState(false);
+  const [showNotifyModal, setShowNotifyModal] = useState(false);
   const [notes, setNotes] = useState('');
   const [evidenceUrl, setEvidenceUrl] = useState('');
   const [evidenceTitle, setEvidenceTitle] = useState('');
@@ -446,8 +448,18 @@ export default function MitigationModal({
                       </button>
                     )}
 
+                    {/* Notify Employee Button */}
+                    <button
+                      type="button"
+                      onClick={() => setShowNotifyModal(true)}
+                      className="px-3.5 py-1.5 bg-indigo-600 hover:bg-indigo-500 border border-indigo-500/30 text-white rounded-xl text-xs font-bold transition-all cursor-pointer inline-flex items-center gap-1.5 font-sans shadow-sm"
+                    >
+                      <Send className="w-4 h-4 text-indigo-300" /> Notify Employee
+                    </button>
+
                     {/* Manual Escalate Button */}
                     <button
+                      type="button"
                       onClick={() => setShowManualEscalateInput(!showManualEscalateInput)}
                       disabled={slaActionLoading}
                       className="px-3.5 py-1.5 bg-purple-600 hover:bg-purple-500 border border-purple-500/20 text-white rounded-xl text-xs font-bold transition-all cursor-pointer disabled:opacity-50 inline-flex items-center gap-1.5 font-sans"
@@ -921,6 +933,20 @@ export default function MitigationModal({
               </div>
             </div>
           </div>
+        )}
+
+        {/* Employee Notification Modal */}
+        {showNotifyModal && (
+          <EmployeeNotificationModal
+            violationId={violation.id}
+            user={user}
+            onClose={() => setShowNotifyModal(false)}
+            onSuccess={(msg) => {
+              setSuccessMsg(msg);
+              loadData();
+              if (onStatusChanged) onStatusChanged();
+            }}
+          />
         )}
 
       </div>
